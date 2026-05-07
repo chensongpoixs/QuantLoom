@@ -15,3 +15,9 @@ logs/
 # 测试
 .pytest_cache/
 
+# 前端构建产物
+frontend/dist/
+frontend/node_modules/
+
+/frontend/node_modules
+/frontend/dist
