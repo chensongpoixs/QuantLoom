@@ -5,3 +5,5 @@
 /quant_loom/storage/__pycache__
 /config/__pycache__
 /tests/__pycache__
+/.env
+/quant_loom/feature_engineering/__pycache__

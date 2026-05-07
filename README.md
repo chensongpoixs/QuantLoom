@@ -110,7 +110,8 @@ conda create -n quant_loom python=3.12
 conda activate quant_loom
 
 # 安装依赖
-pip install -r requirements.txt
+#pip install -r requirements.txt 
+pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple  
 ```
 
 ### 2. 配置

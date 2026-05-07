@@ -1,6 +1,6 @@
 """
 AI 分析模块
-调用 LLM（OpenAI / Anthropic）对异动标的做结构化 JSON 归因
+调用 LLM（OpenAI / Anthropic / llama.cpp）对异动标的做结构化 JSON 归因
 
 输出格式:
 {
@@ -44,13 +44,15 @@ ANALYSIS_USER_TEMPLATE = """请分析以下异动信号：
 
 
 class LLMClient:
-    """LLM 客户端，支持 OpenAI 和 Anthropic"""
+    """LLM 客户端，支持 OpenAI / Anthropic / llama.cpp"""
 
     def __init__(self):
         self.provider = self._detect_provider()
 
     def _detect_provider(self) -> Optional[str]:
-        """检测可用 LLM 提供商"""
+        """检测可用 LLM 提供商，优先级: llama > openai > anthropic"""
+        if settings.llama_base_url:
+            return "llama"
         if settings.openai_api_key:
             return "openai"
         if settings.anthropic_api_key:
@@ -67,13 +69,52 @@ class LLMClient:
             return None
 
         try:
-            if self.provider == "openai":
+            if self.provider == "llama":
+                return self._analyze_llama(alert)
+            elif self.provider == "openai":
                 return self._analyze_openai(alert)
             elif self.provider == "anthropic":
                 return self._analyze_anthropic(alert)
         except Exception as e:
             logger.warning(f"AI 分析失败: {e}")
             return self._fallback_result(alert)
+
+    # ---- llama.cpp (OpenAI 兼容 HTTP API) ----
+
+    def _analyze_llama(self, alert: dict) -> dict:
+        """
+        llama.cpp 本地模型分析
+        llama-server 提供 OpenAI 兼容的 /v1/chat/completions 端点
+        """
+        import openai
+
+        client = openai.OpenAI(
+            api_key=settings.llama_api_key,
+            base_url=settings.llama_base_url,
+        )
+        user_msg = ANALYSIS_USER_TEMPLATE.format(
+            code=alert.get("code", ""),
+            name=alert.get("name", ""),
+            alert_type=alert.get("alert_type", ""),
+            trigger_reason=alert.get("trigger_reason", ""),
+            pct_change=alert.get("pct_change", "N/A"),
+            turnover_amount=alert.get("turnover_amount", "N/A"),
+            main_force_ratio=alert.get("main_force_ratio", "N/A"),
+        )
+        resp = client.chat.completions.create(
+            model=settings.llama_model or "local-model",
+            messages=[
+                {"role": "system", "content": ANALYSIS_SYSTEM_PROMPT},
+                {"role": "user", "content": user_msg},
+            ],
+            temperature=0.3,
+            max_tokens=500,
+        )
+        content = resp.choices[0].message.content
+        logger.info(f"llama.cpp 分析完成, model={settings.llama_model}")
+        return self._parse_response(content)
+
+    # ---- OpenAI ----
 
     def _analyze_openai(self, alert: dict) -> dict:
         import openai
@@ -92,7 +133,7 @@ class LLMClient:
             main_force_ratio=alert.get("main_force_ratio", "N/A"),
         )
         resp = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model=settings.openai_model or "gpt-4o-mini",
             messages=[
                 {"role": "system", "content": ANALYSIS_SYSTEM_PROMPT},
                 {"role": "user", "content": user_msg},
@@ -102,6 +143,8 @@ class LLMClient:
         )
         content = resp.choices[0].message.content
         return self._parse_response(content)
+
+    # ---- Anthropic ----
 
     def _analyze_anthropic(self, alert: dict) -> dict:
         import anthropic

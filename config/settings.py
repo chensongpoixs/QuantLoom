@@ -30,7 +30,13 @@ class Settings(BaseSettings):
     # --- AI / LLM ---
     openai_api_key: str = ""
     openai_base_url: str = ""
+    openai_model: str = "gpt-4o-mini"
     anthropic_api_key: str = ""
+
+    # --- llama.cpp (OpenAI 兼容 HTTP API) ---
+    llama_base_url: str = ""      # e.g. http://localhost:8080/v1
+    llama_model: str = ""         # e.g. qwen3-32b
+    llama_api_key: str = "not-needed"  # llama.cpp 默认不需要 key
 
     # --- 通知 ---
     smtp_host: str = ""
@@ -64,7 +70,7 @@ class Settings(BaseSettings):
     @property
     def ai_enabled(self) -> bool:
         """是否启用 AI 分析"""
-        return bool(self.openai_api_key or self.anthropic_api_key)
+        return bool(self.openai_api_key or self.anthropic_api_key or self.llama_base_url)
 
     model_config = dict(
         env_file=".env",
