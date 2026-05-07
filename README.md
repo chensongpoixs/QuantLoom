@@ -1,4 +1,4 @@
-# AI-WhaleWatcher
+# QuantLoom
 
 > 全市场 A 股机构动向 AI 监控与预警系统
 
@@ -81,22 +81,25 @@ quant_loom/
 │   │   ├── email_sender.py      #   HTML 邮件日报
 │   │   └── webhook.py           #   企业微信/飞书推送
 │   ├── storage/                 # 存储层
-│   │   ├── models.py            #   ORM 模型 (5表)
+│   │   ├── models.py            #   ORM 模型 (7表)
 │   │   ├── mysql_client.py      #   MySQL 连接管理
 │   │   └── redis_client.py      #   Redis 缓存/去重
 │   └── ops/                     # 运维层
 │       └── logger.py            #   结构化日志
 ├── scripts/
-│   ├── init_db.sql              # 建表 DDL
+│   ├── init_db.sql              # 建表 DDL (7张表)
 │   ├── init_db.py               # 建表脚本
 │   └── run_scanner.py           # 一键运行入口
 ├── tests/
 │   ├── test_rule_engine.py       # 规则引擎 (18 tests)
 │   ├── test_cleaner.py           # 数据清洗 (9 tests)
 │   ├── test_dedup.py             # 告警去重 (6 tests)
-│   ├── test_fund_flow.py         # 资金流特征 (13 tests)
+│   ├── test_fund_flow.py         # 资金流特征 (19 tests)
 │   ├── test_price.py             # 价格特征 (14 tests)
-│   └── test_scanner.py           # 全市场扫描器 (9 tests)
+│   ├── test_scanner.py           # 全市场扫描器 (9 tests)
+│   ├── test_event_fetcher.py     # 事件抓取 (11 tests)
+│   ├── test_event_matcher.py     # 事件匹配 (11 tests)
+│   └── test_rag_store.py         # RAG 存储 (7 tests)
 ├── requirements.txt
 ├── .env.example
 └── README.md
@@ -154,12 +157,14 @@ python scripts/run_scanner.py --top 0      # 跳过 AI 分析
 
 # 仅扫描不写库（测试用）
 python scripts/run_scanner.py --dry-run
+# 跳过事件抓取
+python scripts/run_scanner.py --skip-events
 ```
 
 ### 5. 运行测试
 
 ```bash
-pytest tests/ -v                          # 全部 71 个测试
+pytest tests/ -v                          # 全部 107 个测试
 
 # 带覆盖率
 pytest tests/ -v --cov=quant_loom --cov-report=term-missing
@@ -178,7 +183,7 @@ scan_rules:
   min_turnover_amount: 100000000        # 最小成交额 1亿
   pct_change_min: 2                     # 最小涨幅 2%
   super_large_inflow_ratio_min: 20      # 超大单净流入占比最低 20%
-  consecutive_inflow_days_min: 1        # 连续净流入天数 (原型阶段=1)
+  consecutive_inflow_days_min: 3        # 连续净流入天数
   alert_cooldown_minutes: 30            # 冷却时间
 
   breakout:              # 放量上攻
@@ -187,7 +192,7 @@ scan_rules:
     ...
   accumulation:           # 底部吸筹
     enabled: true
-    consecutive_inflow_days_min: 1      # 原型阶段=1，正式阶段≥3
+    consecutive_inflow_days_min: 3      # 从历史数据计算连续流入天数
     ...
 ```
 
@@ -218,7 +223,7 @@ scan_rules:
 
 ## 数据库
 
-### MySQL 表结构 (5 张核心表)
+### MySQL 表结构 (7 张核心表)
 
 | 表名 | 说明 | 数据层 |
 |------|------|-------|
@@ -227,6 +232,8 @@ scan_rules:
 | `sq_stock_fund_flow` | 资金流记录 | DWD |
 | `sq_stock_alerts` | 异动事件 | ADS |
 | `sq_notification_log` | 通知发送日志 | ADS |
+| `sq_stock_events` | 事件数据 (新闻/公告/研报) | ODS |
+| `sq_fund_flow_daily` | 每日资金流累积 (历史特征) | DWS |
 
 ### Redis 用途
 
@@ -238,24 +245,27 @@ scan_rules:
 
 ## 实施路线图
 
-### 第 1 阶段：原型验证 ✅ (当前)
+### 第 1 阶段：原型验证 ✅
 
 - [x] XTick + AkShare 双数据源可配置切换
 - [x] 行情与资金流数据抓取与清洗
-- [x] MySQL 数据库建模 (5 张核心表)
+- [x] MySQL 数据库建模 (7 张核心表)
 - [x] 五类异动规则引擎 (YAML 配置化)
 - [x] 全市场扫描器 (含资金流代理、近低位计算)
 - [x] LLM 结构化归因 (llama.cpp / OpenAI / Anthropic 三选一)
 - [x] Redis 告警去重 (可选, 优雅降级)
 - [x] Webhook 实时推送 + 邮件通知
 - [x] 结构化 JSON 日志 (trace_id 贯穿全链路)
-- [x] 71 个单元测试全部通过
+- [x] 107 个单元测试全部通过
 
-### 第 2 阶段：增强分析
+### 第 2 阶段：增强分析 ✅
 
-- [ ] 接入公告、新闻、研报数据
-- [ ] 实现 RAG 检索
-- [ ] 建立 AI 结构化归因输出
+- [x] 接入公告、新闻、研报数据 (`event_fetcher.py`)
+- [x] 实现 RAG 检索 (`rag_store.py`)
+- [x] 事件匹配 + LLM 相关性排序 (`event_matcher.py`)
+- [x] 历史资金流累积 + 真实连续流入天数 (`sq_fund_flow_daily`)
+- [x] LLM 分析 prompt 含真实事件上下文
+- [x] LLM 请求/响应完整日志 (`_log_request` / `_log_response` / `_log_completion`)
 
 ### 第 3 阶段：生产化
 
@@ -302,10 +312,8 @@ scan_rules:
 
 | 限制 | 说明 | 计划 |
 |------|------|------|
-| XTick 无资金流数据 | 主力净流入用成交额百分位代理 (0-20 区间) | Phase 2 接入更多数据源 |
-| 近 250 日低位为代理值 | 使用日内价格位置 + 跌幅近似判断 | Phase 2 接入历史 K 线 |
-| 连续流入天数仅凭当日 | 无历史资金流回溯，当日净流入 > 0 即计 1 天 | Phase 2 建历史数据表 |
-| 无事件/新闻数据 | 事件驱动规则仅依赖量价特征 | Phase 2 接入公告/新闻 API |
+| XTick 无资金流数据 | 主力净流入用成交额百分位代理 (0-20 区间) | 更多数据源 |
+| 近 250 日低位为代理值 | 使用日内价格位置 + 跌幅近似判断 | Phase 3 接入历史 K 线 |
 | 无 Celery 调度 | 直接函数调用，非定时任务 | Phase 3 引入任务队列 |
 
 ---

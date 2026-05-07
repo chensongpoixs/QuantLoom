@@ -4,6 +4,32 @@ import pytest
 from quant_loom.feature_engineering.fund_flow import FundFlowFeatures
 
 
+class TestComputeConsecutiveDays:
+    def test_all_positive(self):
+        result = FundFlowFeatures.compute_consecutive_days([100, 200, 50, 300])
+        assert result == 4
+
+    def test_mixed(self):
+        result = FundFlowFeatures.compute_consecutive_days([100, 200, -50, 300])
+        assert result == 2
+
+    def test_first_negative(self):
+        result = FundFlowFeatures.compute_consecutive_days([-100, 200, 50])
+        assert result == 0
+
+    def test_empty(self):
+        result = FundFlowFeatures.compute_consecutive_days([])
+        assert result == 0
+
+    def test_with_none_values(self):
+        result = FundFlowFeatures.compute_consecutive_days([100, None, 200])
+        assert result == 1  # None 中断
+
+    def test_all_zeros(self):
+        result = FundFlowFeatures.compute_consecutive_days([0, 0, 0])
+        assert result == 0
+
+
 class TestSuperLargeInflowRatio:
     def test_valid_inflow(self):
         row = pd.Series({"turnover_amount": 1e8, "super_large_net_inflow": 2e7})

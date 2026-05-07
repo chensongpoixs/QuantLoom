@@ -25,7 +25,7 @@ class XTickFetcher:
         self._last_call = 0.0
         self._session = requests.Session()
         self._session.headers.update({
-            "User-Agent": "AI-WhaleWatcher/0.1",
+            "User-Agent": "QuantLoom/0.1",
             "Accept": "application/json",
         })
 

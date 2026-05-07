@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
 """
-一键运行全流程：抓取 → 清洗 → 扫描 → AI分析 → 告警 → 通知
+一键运行全流程：抓取 → 清洗 → 预扫描 → 事件抓取 → 历史资金流 → 规则扫描 → AI分析 → 告警 → 通知
 用法:
   python scripts/run_scanner.py              # 执行一次扫描 (AI 分析 top 10)
   python scripts/run_scanner.py --top 20     # AI 分析 top 20
   python scripts/run_scanner.py --top 0      # 跳过 AI 分析
   python scripts/run_scanner.py --dry-run    # 仅扫描不写库
+  python scripts/run_scanner.py --skip-events # 跳过事件抓取
 """
 
 import sys
-from datetime import datetime
+from collections import Counter
+from datetime import datetime, date
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -25,7 +27,7 @@ from quant_loom.notification.email_sender import email_sender
 from quant_loom.notification.webhook import webhook_notifier
 from quant_loom.storage.mysql_client import mysql_client
 from quant_loom.storage.redis_client import redis_client
-from quant_loom.storage.models import StockAlert
+from quant_loom.storage.models import StockAlert, StockEvent, FundFlowDaily
 
 
 def parse_top_n() -> int:
@@ -36,12 +38,12 @@ def parse_top_n() -> int:
     return 10
 
 
-def main(dry_run: bool = False, top_n: int = 10):
+def main(dry_run: bool = False, top_n: int = 10, skip_events: bool = False):
     trace_id = datetime.now().strftime("%Y%m%d%H%M%S")
-    logger.info(f"=== AI-WhaleWatcher 扫描开始 === trace_id={trace_id}")
+    logger.info(f"=== QuantLoom 扫描开始 === trace_id={trace_id}")
 
     # ---- 1. 数据抓取 ----
-    logger.info(f"[1/5] 抓取数据 (source={settings.data_source})...")
+    logger.info(f"[1/7] 抓取行情数据 (source={settings.data_source})...")
 
     if settings.data_source == "akshare":
         from quant_loom.data_ingestion.akshare_fetcher import AkshareFetcher
@@ -60,25 +62,66 @@ def main(dry_run: bool = False, top_n: int = 10):
     logger.info(f"  行情: {len(quotes_raw)} 只  |  资金流: {len(fund_flow_raw)} 条")
 
     # ---- 2. 数据清洗 ----
-    logger.info("[2/5] 清洗数据...")
+    logger.info("[2/7] 清洗数据...")
     quotes_clean = DataCleaner.clean_quotes(quotes_raw)
     fund_flow_clean = DataCleaner.clean_fund_flow(fund_flow_raw)
 
-    # ---- 3. 规则扫描 ----
-    logger.info("[3/5] 规则扫描...")
-    alerts = scanner.scan_and_format(quotes_clean, fund_flow_clean)
+    # ---- 3. 历史资金流累积 + 连续流入天数计算 ----
+    consecutive_inflow_map: dict[str, int] = {}
+    if not dry_run and mysql_client.ping():
+        logger.info("[3/7] 计算历史资金流特征...")
+        today = date.today()
+        _upsert_daily_fund_flow(fund_flow_clean, today)
+        consecutive_inflow_map = _compute_consecutive_inflow_map(
+            list(quotes_clean["code"].unique()) if "code" in quotes_clean.columns else []
+        )
+        if consecutive_inflow_map:
+            has_history = sum(1 for v in consecutive_inflow_map.values() if v >= 3)
+            logger.info(f"  连续流入天数计算完成 (>=3天: {has_history} 只)")
+    else:
+        logger.info("[3/7] 跳过历史资金流 (dry-run 或 MySQL 不可用)")
 
-    # 按类型统计
-    from collections import Counter
+    # ---- 4. 事件抓取 (先快速预扫描获取候选标的) ----
+    stock_events: dict[str, list] = {}
+    if not skip_events and not dry_run:
+        logger.info("[4/7] 预扫描 + 事件抓取...")
+        # 快速预扫描获取候选标的代码列表
+        pre_alerts = scanner.scan_and_format(quotes_clean, fund_flow_clean,
+                                             consecutive_inflow_map=consecutive_inflow_map)
+        candidate_codes = list(set(a["code"] for a in pre_alerts[:50]))  # top 50 候选
+
+        if candidate_codes:
+            from quant_loom.data_ingestion.event_fetcher import EventFetcher
+            event_fetcher = EventFetcher()
+            stock_events = event_fetcher.fetch_events_batch(candidate_codes)
+
+            # 存储事件到 MySQL
+            from quant_loom.ai_analyzer.rag_store import RAGStore
+            rag = RAGStore()
+            all_events = []
+            for events in stock_events.values():
+                all_events.extend(events)
+            rag.deduplicate_and_store(all_events)
+            logger.info(f"  事件抓取完成: {len(stock_events)} 只股票有事件数据")
+    else:
+        logger.info("[4/7] 跳过事件抓取")
+
+    # ---- 5. 规则扫描 (含事件匹配) ----
+    logger.info("[5/7] 规则扫描...")
+    alerts = scanner.scan_and_format(quotes_clean, fund_flow_clean,
+                                     stock_events=stock_events,
+                                     consecutive_inflow_map=consecutive_inflow_map)
+
     type_counts = Counter(a["alert_type"] for a in alerts)
     type_str = "  ".join(f"{k}: {v}" for k, v in type_counts.most_common())
-    logger.info(f"  扫描结果: {len(alerts)} 个异动信号  ({type_str})")
+    event_count = sum(1 for a in alerts if a.get("has_event"))
+    logger.info(f"  扫描结果: {len(alerts)} 个异动信号  (有事件: {event_count})  ({type_str})")
 
     if not alerts:
         logger.info("无异动信号，扫描结束")
         return
 
-    # ---- 4. 去重 ----
+    # ---- 6. 去重 ----
     if redis_client.ping():
         dedup = AlertDeduplicator()
         before = len(alerts)
@@ -89,26 +132,44 @@ def main(dry_run: bool = False, top_n: int = 10):
             logger.info("全部信号被去重，扫描结束")
             return
 
-    # ---- 5. AI 分析 (仅 top N) ----
+    # ---- 7. 构建事件上下文 + AI 分析 ----
     top_alerts = alerts[:top_n] if top_n > 0 else []
     rest_alerts = alerts[top_n:] if top_n > 0 else alerts
 
+    events_contexts: dict[str, str] = {}
+    if top_alerts and (stock_events or not dry_run):
+        from quant_loom.ai_analyzer.rag_store import RAGStore
+        from quant_loom.feature_engineering.event_matcher import EventMatcher
+        rag = RAGStore()
+        matcher = EventMatcher()
+
+        for alert in top_alerts:
+            code = alert.get("code", "")
+            code_events = stock_events.get(code, [])
+            if not code_events and mysql_client.ping():
+                code_events = rag.get_events_for_stock(code, days=3)
+
+            if code_events:
+                matched = matcher.match_events(code, alert, code_events)
+                events_contexts[code] = rag.get_context_for_alert(alert, matched)
+
     if top_alerts:
-        logger.info(f"[4/5] AI 分析 (top {len(top_alerts)})...")
-        top_alerts = llm_client.batch_analyze(top_alerts)
+        logger.info(f"[6/7] AI 分析 (top {len(top_alerts)}, "
+                     f"有事件上下文: {len(events_contexts)})...")
+        top_alerts = llm_client.batch_analyze(top_alerts, events_contexts=events_contexts)
         logger.info(f"  AI 分析完成: {len(top_alerts)} 条")
     else:
-        logger.info("[4/5] 跳过 AI 分析")
+        logger.info("[6/7] 跳过 AI 分析")
 
     all_alerts = top_alerts + rest_alerts
 
-    # ---- 6. 入库 ----
+    # ---- 8. 入库 + 通知 ----
     if not dry_run and mysql_client.ping():
-        logger.info("[5/5] 写入数据库...")
+        logger.info("[7/7] 写入数据库...")
         saved = 0
         for alert in all_alerts:
             if not alert.get("ai_summary"):
-                continue  # 跳过未 AI 分析的
+                continue
             record = StockAlert(
                 ts=alert.get("ts", datetime.now()),
                 code=alert.get("code", ""),
@@ -133,24 +194,85 @@ def main(dry_run: bool = False, top_n: int = 10):
         if redis_client.ping():
             dedup.mark_sent(all_alerts)
 
-    # ---- 7. 通知推送 ----
+    # ---- 通知推送 ----
     p1_alerts = [a for a in all_alerts if a.get("risk_level") == "P1"]
     if p1_alerts:
         logger.info(f"P1 告警 {len(p1_alerts)} 条，实时推送...")
         for alert in p1_alerts:
             webhook_notifier.send_alert(alert)
 
-    # ---- 8. 打印汇总 ----
+    # ---- 打印汇总 ----
     print_summary(all_alerts)
 
-    logger.info(f"=== AI-WhaleWatcher 扫描完成 === trace_id={trace_id}")
+    logger.info(f"=== QuantLoom 扫描完成 === trace_id={trace_id}")
+
+
+def _upsert_daily_fund_flow(fund_flow_df, trade_date: date):
+    """将当日资金流数据写入 sq_fund_flow_daily (upsert)"""
+    if fund_flow_df.empty or "code" not in fund_flow_df.columns:
+        return
+
+    from quant_loom.feature_engineering.fund_flow import FundFlowFeatures
+
+    df = FundFlowFeatures.compute_features(fund_flow_df.copy())
+    saved = 0
+    for _, row in df.iterrows():
+        code = str(row.get("code", ""))
+        if not code:
+            continue
+        try:
+            record = FundFlowDaily(
+                code=code,
+                trade_date=trade_date,
+                super_large_net_inflow=float(row.get("super_large_net_inflow", 0) or 0),
+                large_net_inflow=float(row.get("large_net_inflow", 0) or 0),
+                medium_net_inflow=float(row.get("medium_net_inflow", 0) or 0),
+                small_net_inflow=float(row.get("small_net_inflow", 0) or 0),
+                main_force_ratio=float(row.get("main_force_ratio", 0) or 0),
+                net_inflow=float(row.get("net_inflow", 0) or 0),
+            )
+            mysql_client.insert_or_update(record)
+            saved += 1
+        except Exception as e:
+            logger.debug(f"资金流写入跳过 {code}: {e}")
+    if saved > 0:
+        logger.info(f"  资金流历史写入: {saved} 条")
+
+
+def _compute_consecutive_inflow_map(codes: list[str]) -> dict[str, int]:
+    """从 sq_fund_flow_daily 计算每只股票的连续净流入天数"""
+    from quant_loom.feature_engineering.fund_flow import FundFlowFeatures
+
+    result = {}
+    if not codes or not mysql_client.ping():
+        return result
+
+    try:
+        with mysql_client.get_session() as sess:
+            from sqlalchemy import desc
+            for code in codes:
+                rows = (
+                    sess.query(FundFlowDaily.net_inflow)
+                    .filter(FundFlowDaily.code == code)
+                    .order_by(desc(FundFlowDaily.trade_date))
+                    .limit(30)
+                    .all()
+                )
+                inflows = [float(r.net_inflow or 0) for r in rows]
+                days = FundFlowFeatures.compute_consecutive_days(inflows)
+                if days > 0:
+                    result[code] = days
+    except Exception as e:
+        logger.warning(f"查询历史资金流失败: {e}")
+
+    return result
 
 
 def print_summary(alerts: list):
     """打印扫描结果摘要（含 AI 分析详情）"""
     print()
     print("=" * 70)
-    print(f"  AI-WhaleWatcher 扫描结果 ({len(alerts)} 条异动信号)")
+    print(f"  QuantLoom 扫描结果 ({len(alerts)} 条异动信号)")
     print("=" * 70)
 
     # 统计
@@ -210,5 +332,6 @@ def print_summary(alerts: list):
 if __name__ == "__main__":
     dry = "--dry-run" in sys.argv
     top_n = parse_top_n()
-    main(dry_run=dry, top_n=top_n)
+    skip_events = "--skip-events" in sys.argv
+    main(dry_run=dry, top_n=top_n, skip_events=skip_events)
 

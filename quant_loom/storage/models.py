@@ -1,6 +1,6 @@
 """
 SQLAlchemy ORM 模型定义
-对应 MySQL 数据库中的 5 张核心表
+对应 MySQL 数据库中的 7 张核心表
 """
 
 from datetime import datetime
@@ -9,6 +9,7 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     Column,
+    Date,
     DateTime,
     Float,
     Integer,
@@ -118,3 +119,47 @@ class NotificationLog(Base):
     sent_at = Column(DateTime, comment="发送时间")
     error_message = Column(Text, comment="失败原因")
     created_at = Column(DateTime, default=datetime.now)
+
+
+class StockEvent(Base):
+    """股票事件表 — 新闻/公告/研报"""
+
+    __tablename__ = "sq_stock_events"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    code = Column(String(10), nullable=False, comment="股票代码")
+    event_type = Column(String(20), nullable=False, comment="事件类型: news/announcement/report")
+    title = Column(String(500), nullable=False, comment="标题")
+    content = Column(Text, comment="内容摘要")
+    source = Column(String(100), comment="来源: eastmoney/cls/jinshi/sina")
+    url = Column(String(500), comment="原文链接")
+    published_at = Column(DateTime, nullable=False, comment="发布时间")
+    sentiment_score = Column(Float, comment="情感评分 -1 到 1")
+    created_at = Column(DateTime, default=datetime.now)
+
+    __table_args__ = (
+        Index("idx_evt_code_pub", "code", "published_at"),
+        Index("idx_evt_type_pub", "event_type", "published_at"),
+    )
+
+
+class FundFlowDaily(Base):
+    """每日资金流累积表 — 用于计算连续流入天数等历史特征"""
+
+    __tablename__ = "sq_fund_flow_daily"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    code = Column(String(10), nullable=False, comment="股票代码")
+    trade_date = Column(Date, nullable=False, comment="交易日期")
+    super_large_net_inflow = Column(Numeric(20, 4), default=0)
+    large_net_inflow = Column(Numeric(20, 4), default=0)
+    medium_net_inflow = Column(Numeric(20, 4), default=0)
+    small_net_inflow = Column(Numeric(20, 4), default=0)
+    main_force_ratio = Column(Numeric(10, 4), default=0)
+    net_inflow = Column(Numeric(20, 4), default=0)
+    created_at = Column(DateTime, default=datetime.now)
+
+    __table_args__ = (
+        Index("uk_ffd_code_date", "code", "trade_date", unique=True),
+        Index("idx_ffd_date", "trade_date"),
+    )

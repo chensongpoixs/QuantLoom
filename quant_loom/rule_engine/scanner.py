@@ -31,9 +31,16 @@ class MarketScanner:
             return yaml.safe_load(f)
 
     def scan(self, quotes_df: pd.DataFrame, fund_flow_df: pd.DataFrame,
-             sector_stats: Optional[Dict[str, Dict]] = None) -> List[Tuple[AlertResult, pd.Series]]:
+             sector_stats: Optional[Dict[str, Dict]] = None,
+             stock_events: Optional[Dict[str, list]] = None,
+             consecutive_inflow_map: Optional[Dict[str, int]] = None) -> List[Tuple[AlertResult, pd.Series]]:
         """
         执行全市场扫描
+
+        Parameters
+        ----------
+        stock_events: {code: [event_dicts]} 各股票的近期事件
+        consecutive_inflow_map: {code: days} 各股票的连续净流入天数 (从历史数据计算)
 
         Returns
         -------
@@ -49,34 +56,43 @@ class MarketScanner:
             logger.warning("合并后数据为空")
             return []
 
+        stock_events = stock_events or {}
+        consecutive_inflow_map = consecutive_inflow_map or {}
+
         logger.info(f"开始扫描全市场 {len(merged)} 只股票...")
         alerts: List[Tuple[AlertResult, pd.Series]] = []
 
         for _, row in merged.iterrows():
+            code = str(row.get("code", ""))
+
             # 1. 放量上攻
             result = self.engine.check_breakout(row)
             if result.matched:
-                result.details["code"] = row.get("code", "")
+                result.details["code"] = code
                 alerts.append((result, row))
 
-            # 2. 底部吸筹
-            net_inflow = float(row.get("net_inflow", 0) or 0)
-            inflow_days = 1 if net_inflow > 0 else 0  # 原型: 仅根据当日净流入判断
+            # 2. 底部吸筹 — 使用历史资金流计算的连续流入天数
+            inflow_days = consecutive_inflow_map.get(code, 0)
+            if inflow_days == 0:
+                net_inflow = float(row.get("net_inflow", 0) or 0)
+                inflow_days = 1 if net_inflow > 0 else 0
             result = self.engine.check_accumulation(row, consecutive_inflow_days=inflow_days)
             if result.matched:
-                result.details["code"] = row.get("code", "")
+                result.details["code"] = code
                 alerts.append((result, row))
 
             # 3. 尾盘抢筹
             result = self.engine.check_tail_chasing(row)
             if result.matched:
-                result.details["code"] = row.get("code", "")
+                result.details["code"] = code
                 alerts.append((result, row))
 
-            # 4. 事件驱动
-            result = self.engine.check_event_driven(row, has_event=False)
+            # 4. 事件驱动 — 检查是否有真实事件
+            has_event = code in stock_events and len(stock_events[code]) > 0
+            result = self.engine.check_event_driven(row, has_event=has_event)
             if result.matched:
-                result.details["code"] = row.get("code", "")
+                result.details["code"] = code
+                result.details["has_event"] = has_event
                 alerts.append((result, row))
 
             # 5. 板块联动
@@ -85,7 +101,7 @@ class MarketScanner:
                 if industry and industry in sector_stats:
                     result = self.engine.check_sector_linked(row, sector_stats[industry])
                     if result.matched:
-                        result.details["code"] = row.get("code", "")
+                        result.details["code"] = code
                         alerts.append((result, row))
 
         sorted_alerts = sorted(alerts, key=lambda x: x[0].confidence_score, reverse=True)
@@ -93,14 +109,18 @@ class MarketScanner:
         return sorted_alerts
 
     def scan_and_format(self, quotes_df: pd.DataFrame, fund_flow_df: pd.DataFrame,
-                        sector_stats: Optional[Dict] = None) -> List[dict]:
+                        sector_stats: Optional[Dict] = None,
+                        stock_events: Optional[Dict[str, list]] = None,
+                        consecutive_inflow_map: Optional[Dict[str, int]] = None) -> List[dict]:
         """
         扫描并返回格式化字典列表（便于入库和 AI 分析）
         每个 dict 包含完整的上游数据字段
         """
         from datetime import datetime
 
-        results = self.scan(quotes_df, fund_flow_df, sector_stats)
+        results = self.scan(quotes_df, fund_flow_df, sector_stats,
+                           stock_events=stock_events,
+                           consecutive_inflow_map=consecutive_inflow_map)
 
         formatted = []
         for alert, row in results:
@@ -118,6 +138,7 @@ class MarketScanner:
                 "inflow_ratio": float(row.get("main_force_ratio", 0) or 0),
                 "confidence_score": alert.confidence_score,
                 "risk_level": alert.risk_level,
+                "has_event": alert.details.get("has_event", False),
             })
 
         return formatted

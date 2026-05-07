@@ -48,6 +48,10 @@ class Settings(BaseSettings):
     xtick_token: str = ""           # xtick.top 注册获取 token
     xtick_api_url: str = "http://api.xtick.top/doc/market"
 
+    # --- 事件抓取 ---
+    event_fetch_enabled: bool = True     # 是否启用事件抓取 (新闻/公告/研报)
+    event_lookback_days: int = 3         # 事件回溯天数
+
     # --- 通知 ---
     smtp_host: str = ""
     smtp_port: int = 587

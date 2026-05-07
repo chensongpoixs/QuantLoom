@@ -385,27 +385,6 @@ go run cmd/cli/main.go
 * 类 IDE 能力
 * 类自动化测试系统能力
 
----
 
-# ⚡ 如果你下一步想升级（我可以继续帮你做）
-
-我可以继续帮你升级到：
-
-## 🚀 V3（Cursor级 IDE）
-
-* VSCode 插件
-* 代码补全 + agent 联动
-
-## 🚀 V4（Devin级）
-
-* 多 repo 并行开发
-* 自动 PR
-* GitHub bot
-
-## 🚀 V5（企业级 AI Dev Infra）
-
-* 多 agent 集群
-* Kubernetes sandbox
-* CI/CD 自动发布
 
  

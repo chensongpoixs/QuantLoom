@@ -1,5 +1,5 @@
 -- ============================================================
--- AI-WhaleWatcher 数据库初始化 DDL
+-- QuantLoom 数据库初始化 DDL
 -- 数据库: MySQL 8.0+
 -- ============================================================
 
@@ -81,4 +81,36 @@ CREATE TABLE IF NOT EXISTS sq_notification_log (
     sent_at DATETIME COMMENT '发送时间',
     error_message TEXT COMMENT '失败原因',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 6. 股票事件表 (新闻/公告/研报)
+CREATE TABLE IF NOT EXISTS sq_stock_events (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '自增主键',
+    code VARCHAR(10) NOT NULL COMMENT '股票代码',
+    event_type VARCHAR(20) NOT NULL COMMENT '事件类型: news/announcement/report',
+    title VARCHAR(500) NOT NULL COMMENT '标题',
+    content TEXT COMMENT '内容摘要',
+    source VARCHAR(100) COMMENT '来源: eastmoney/cls/jinshi/sina',
+    url VARCHAR(500) COMMENT '原文链接',
+    published_at DATETIME NOT NULL COMMENT '发布时间',
+    sentiment_score DOUBLE COMMENT '情感评分 -1 到 1',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    INDEX idx_evt_code_pub (code, published_at),
+    INDEX idx_evt_type_pub (event_type, published_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 7. 每日资金流累积表 (历史特征计算)
+CREATE TABLE IF NOT EXISTS sq_fund_flow_daily (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '自增主键',
+    code VARCHAR(10) NOT NULL COMMENT '股票代码',
+    trade_date DATE NOT NULL COMMENT '交易日期',
+    super_large_net_inflow DECIMAL(20, 4) DEFAULT 0 COMMENT '超大单净流入',
+    large_net_inflow DECIMAL(20, 4) DEFAULT 0 COMMENT '大单净流入',
+    medium_net_inflow DECIMAL(20, 4) DEFAULT 0 COMMENT '中单净流入',
+    small_net_inflow DECIMAL(20, 4) DEFAULT 0 COMMENT '小单净流入',
+    main_force_ratio DECIMAL(10, 4) DEFAULT 0 COMMENT '主力净流入占比(%)',
+    net_inflow DECIMAL(20, 4) DEFAULT 0 COMMENT '总净流入',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    UNIQUE INDEX uk_ffd_code_date (code, trade_date),
+    INDEX idx_ffd_date (trade_date)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

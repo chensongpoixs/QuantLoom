@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This repository contains two systems: AI-WhaleWatcher (working Python prototype) and an AI Software Engineering Runtime (Go design doc only).
+This repository contains two systems: QuantLoom (working Python prototype) and an AI Software Engineering Runtime (Go design doc only).
 
-### System 1: AI-WhaleWatcher — Working Prototype
+### System 1: QuantLoom — Working Prototype
 
 A-share (Chinese stock market) institutional capital flow anomaly detection and early warning system. Full-market coverage (5000+ stocks) with multi-source fusion of fund flow, price action, news sentiment, and research reports.
 
@@ -67,23 +67,27 @@ core/
 
 ## Current State
 
-- **AI-WhaleWatcher**: Working prototype with full pipeline (fetch → clean → scan → AI analyze → store → notify)
+- **QuantLoom**: Working prototype with full pipeline (fetch → clean → pre-scan → event fetch → historical fund flow → rule scan → AI analyze → store → notify)
 - **System 2** (AI Coding Runtime): Design-only, in `docs/doc.md`
-- **71 unit tests** covering rules, cleaner, dedup, fund_flow, price, scanner — all passing (`pytest tests/ -v`)
-- **Test files**: `test_rule_engine.py` (18), `test_cleaner.py` (9), `test_dedup.py` (6), `test_fund_flow.py` (13), `test_price.py` (14), `test_scanner.py` (9)
-- Key limitations of current prototype:
-  - XTick provides no fund flow data → `main_force_ratio` proxied by turnover percentile (0-20 range)
+- **107 unit tests** across 10 test files — all passing (`pytest tests/ -v`)
+- **Test files**: `test_rule_engine.py` (18), `test_cleaner.py` (9), `test_dedup.py` (6), `test_fund_flow.py` (19), `test_price.py` (14), `test_scanner.py` (9), `test_event_fetcher.py` (11), `test_event_matcher.py` (11), `test_rag_store.py` (7), plus misc
+- Phase 2 (增强分析) completed:
+  - Event/news data ingestion via AkShare (`event_fetcher.py`) — stock news, announcements, research reports
+  - Event matching via LLM-as-ranker (`event_matcher.py`) — time filter → keyword pre-filter → LLM relevance scoring
+  - RAG context store (`rag_store.py`) — MySQL-backed event storage + LLM prompt context building
+  - Historical fund flow tracking (`sq_fund_flow_daily` table) — real `consecutive_inflow_days` from history
+  - Enhanced AI analysis with real event context in prompts
+  - `consecutive_inflow_days_min` restored to 3 in `rules.yaml`
+  - Detailed LLM request/response logging (method, URL, headers, full body, tokens, elapsed)
+- Remaining limitations:
+  - XTick provides no fund flow data → `main_force_ratio` proxied by turnover percentile
   - `near_250d_low` proxied by intraday range position + pct_change (no 250-day history)
-  - `consecutive_inflow_days` only detects today's inflow (no historical lookback)
-  - AkShare provides fund flow + stock names but may be network-restricted
-  - No event/news ingestion yet (Phase 2)
   - No Celery task scheduling yet (uses direct function calls)
 - Redis gracefully degrades — all `redis_client` methods check `self.client is not None`
 - AI analysis gracefully degrades — `_fallback_result()` returns rule-only output when LLM unavailable
-- Accumulation rule: `rules.yaml` sets `consecutive_inflow_days_min: 1` for prototype (will raise to 3 with historical data)
-- `ANTHROPIC_MODEL` env var controls Anthropic model selection (default: `claude-sonnet-4-6`)
+- LLM observability: `_log_request()`, `_log_response()`, `_log_completion()` record full request/response body, headers, tokens, and elapsed time
 
-### Quick Start (AI-WhaleWatcher)
+### Quick Start (QuantLoom)
 
 ```bash
 # Install deps

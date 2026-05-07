@@ -65,3 +65,17 @@ class FundFlowFeatures:
         df["main_force_ratio"] = df.apply(cls.main_force_inflow_ratio, axis=1)
         df["net_inflow"] = df.apply(cls.net_inflow, axis=1)
         return df
+
+    @staticmethod
+    def compute_consecutive_days(net_inflows: list[float]) -> int:
+        """
+        从最近交易日起计算连续净流入天数
+        net_inflows: 按日期降序排列的净流入列表 (最近的在前面)
+        """
+        days = 0
+        for inflow in net_inflows:
+            if inflow and inflow > 0:
+                days += 1
+            else:
+                break
+        return days

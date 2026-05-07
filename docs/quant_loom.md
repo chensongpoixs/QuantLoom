@@ -2,7 +2,7 @@
 
 # 全市场 A 股机构动向 AI 监控与预警系统
 
-## Project: AI-WhaleWatcher（增强版）
+## Project: QuantLoom（增强版）
 
 > 目标：构建一套面向 A 股全市场的机构资金异动监测系统，对资金流、价格行为、新闻舆情、研报观点进行多源融合分析，并在满足规则与模型置信度要求时触发预警与日报推送。
 > 说明：系统输出仅供研究与信息参考，不构成投资建议。
@@ -342,6 +342,16 @@ scan_rules:
 * 结果人工复核入口
 * Prompt 版本管理
 
+### 7.4 LLM 可观测性 (Phase 2 已实现)
+
+每次 LLM 调用记录三级日志（与 Go 服务 `ai/client.go` 对齐）：
+
+* **请求前** (`http request full`): method, url, request_headers, request_body (完整 JSON)
+* **响应后** (`http response full`): status, response_headers, response_body (完整 JSON)
+* **完成摘要** (`request ok`): elapsed, model, prompt_tokens, completion_tokens, total_tokens, assistant_message_content_full
+
+所有内容完整打印，不做截断。
+
 ---
 
 ## 8. 通知系统增强建议
@@ -460,11 +470,13 @@ scan_rules:
 * 实现规则扫描器
 * 形成基础告警
 
-### 第 2 阶段：增强分析
+### 第 2 阶段：增强分析 ✅
 
 * 接入公告、新闻、研报数据
 * 实现 RAG 检索
 * 建立 AI 结构化归因输出
+* 历史资金流累积 + 真实连续流入天数
+* LLM 请求/响应完整日志
 
 ### 第 3 阶段：生产化
 

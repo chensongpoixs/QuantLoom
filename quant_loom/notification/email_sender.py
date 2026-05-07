@@ -28,7 +28,7 @@ _HTML_TEMPLATE = """<!DOCTYPE html>
   .footer { margin-top: 20px; color: #999; font-size: 12px; }
 </style></head>
 <body>
-<h2>AI-WhaleWatcher 异动日报</h2>
+<h2>QuantLoom 异动日报</h2>
 <p>生成时间: {report_time}</p>
 <p>今日异动总数: <strong>{total_alerts}</strong> (P1: {p1_count}, P2: {p2_count}, P3: {p3_count})</p>
 
@@ -42,7 +42,7 @@ _HTML_TEMPLATE = """<!DOCTYPE html>
 <p>本报告仅供研究参考，不构成投资建议。所有信号基于公开数据与规则引擎自动生成，可能存在误报或滞后。</p>
 
 <div class="footer">
-<p>AI-WhaleWatcher · 数据来源: XTick · 免责声明: 系统输出仅供研究信息参考</p>
+<p>QuantLoom · 数据来源: XTick · 免责声明: 系统输出仅供研究信息参考</p>
 </div>
 </body>
 </html>"""
@@ -99,7 +99,7 @@ class EmailSender:
 
         try:
             msg = MIMEMultipart("alternative")
-            msg["Subject"] = f"[AI-WhaleWatcher] 异动日报 {datetime.now().strftime('%Y-%m-%d')}"
+            msg["Subject"] = f"[QuantLoom] 异动日报 {datetime.now().strftime('%Y-%m-%d')}"
             msg["From"] = self.from_addr
             msg["To"] = self.to_addr
             msg.attach(MIMEText(html, "html", "utf-8"))
