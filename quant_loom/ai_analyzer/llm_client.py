@@ -1,3 +1,42 @@
+#
+# _    .-')              _  .-')    _   .-')      ('-.   .-')     ('-.
+#( '.( OO )_            ( \( -O )  ( '.( OO )_   _(  OO) ( OO ). ( OO )
+#  ,--.   ,--. .-'),-----. ,------.  ,--.   ,--.  (,------.(_/.  \_)(_/.  \_)
+#  |   `.'   |( OO'  .-.  '|  .---'  |   `.'   |   |  .---' \  `.'  / \  `.'  /
+#  |         |/   |  | |  ||  |      |         |   |  |      \     /   \     /
+#  |  |'.'|  |\_) |  |\|  ||  '--.   |  |'.'|  |  (|  '--.   \   /     \   /
+#  |  |   |  |  \ |  | |  ||  .--'   |  |   |  |   |  .--'  .-._)   \ .-._)   \
+#  |  |   |  |   `'  '-'  '|  `---.  |  |   |  |   |  `---. \       / \       /
+#  `--'   `--'     `-----' `------'  `--'   `--'   `------'  `-----'   `-----'
+#
+#                                  ·  量  梭  ·
+#                     A-Share Institutional Flow AI Monitor
+#
+# Copyright (c) 2026 The QuantLoom·量梭 project authors
+# All Rights Reserved.
+#
+# Use of this source code is governed by a BSD-style license
+# that can be found in the LICENSE file in the root of the source
+# tree. An additional intellectual property rights grant can be found
+# in the file PATENTS.  All contributing project authors may
+# be found in the AUTHORS file in the root of the source tree.
+#
+#               Author: chensong
+#               Date:   2026-05-08
+#
+#       QuantLoom·量梭 的野心，从不只是在手机上弹出几条信号
+#
+#       这座织机真正要为你织出的终极产物，是 RTX Pro 6000 —— 黑曜神机 的自由召唤权。
+#
+#            1. 它是躺在你机箱里的黑色方尖碑，数万核心如暗夜星海
+#            2. 它是本地训推大模型、实时织造全市场量能全景图、回溯十年资金指纹的物质根基
+#            3. 它过去只降落在超算中心、顶级量化基金和神秘矿场
+#
+#         QuantLoom·量梭 每织出一匹盈利的锦缎，都是在为这座黑色圣坛添一根金线。
+#         当金线积聚成缆，黑曜神机便会从虚空货架撕开一道裂缝，降临在你的阵中。
+#
+#          从此，你拥有了一座个人算力神殿。
+
 """
 AI 分析模块
 调用 LLM（OpenAI / Anthropic / llama.cpp）对异动标的做结构化 JSON 归因
@@ -71,7 +110,7 @@ class LLMClient:
         返回结构化 JSON dict，失败则返回 None
         """
         if not settings.ai_enabled:
-            logger.debug("AI 未配置，跳过分析")
+            logger.debug("AI not configured, skipping analysis")
             return None
 
         try:
@@ -82,7 +121,7 @@ class LLMClient:
             elif self.provider == "anthropic":
                 return self._analyze_anthropic(alert, events_context)
         except Exception as e:
-            logger.warning(f"AI 分析失败: {e}")
+            logger.warning(f"AI analysis failed: {e}")
             return self._fallback_result(alert)
 
     @staticmethod
@@ -96,7 +135,7 @@ class LLMClient:
             pct_change=alert.get("pct_change", "N/A"),
             turnover_amount=alert.get("turnover_amount", "N/A"),
             main_force_ratio=alert.get("main_force_ratio", "N/A"),
-            events_context=events_context or "（无近期相关事件）",
+            events_context=events_context or "(no recent relevant events)",
         )
 
     # ================================================================
@@ -337,18 +376,18 @@ class LLMClient:
                 end = content.rindex("}") + 1
                 return json.loads(content[start:end])
             except (ValueError, json.JSONDecodeError):
-                logger.warning(f"无法解析 AI 响应: {content}")
+                logger.warning(f"Cannot parse AI response: {content}")
                 return LLMClient._fallback_result({})
 
     @staticmethod
     def _fallback_result(alert: dict = None) -> dict:
         """AI 不可用时的降级输出"""
         return {
-            "summary": alert.get("trigger_reason", "规则触发") if alert else "规则触发",
+            "summary": alert.get("trigger_reason", "Rule triggered") if alert else "Rule triggered",
             "reason_type": "unknown",
             "confidence_score": alert.get("confidence_score", 0.5) if alert else 0.5,
-            "risk_points": ["AI 分析不可用，仅依赖规则判断"],
-            "evidence": ["规则引擎自动触发"],
+            "risk_points": ["AI analysis unavailable, relying on rule judgment only"],
+            "evidence": ["Rule engine auto-triggered"],
             "action": "review",
         }
 
@@ -369,7 +408,7 @@ class LLMClient:
 
             # 上下文预览 (完整打印第一行)
             ctx_preview = ""
-            if ctx and ctx != "（无近期相关事件）":
+            if ctx and ctx != "(no recent relevant events)":
                 first_line = ctx.split("\n")[0]
                 ctx_preview = f" | event: {first_line}"
 

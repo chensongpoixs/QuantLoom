@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This repository contains two systems: QuantLoom (working Python prototype) and an AI Software Engineering Runtime (Go design doc only).
+This repository contains two systems: QuantLoom·量梭 (working Python prototype) and an AI Software Engineering Runtime (Go design doc only).
 
-### System 1: QuantLoom — Working Prototype
+### System 1: QuantLoom·量梭 — Working Prototype
 
 A-share (Chinese stock market) institutional capital flow anomaly detection and early warning system. Full-market coverage (5000+ stocks) with multi-source fusion of fund flow, price action, news sentiment, and research reports.
 
@@ -70,7 +70,7 @@ core/
 
 ## Current State
 
-- **QuantLoom**: Working prototype with full pipeline (fetch → clean → pre-scan → event fetch → historical fund flow → rule scan → AI analyze → store → notify)
+- **QuantLoom·量梭**: Working prototype with full pipeline (fetch → clean → pre-scan → event fetch → historical fund flow → rule scan → AI analyze → store → notify)
 - **System 2** (AI Coding Runtime): Design-only, in `docs/doc.md`
 - **208 unit tests** across 20 test files — all passing (`pytest tests/ -v`)
 - **Test files**: `test_rule_engine.py` (22), `test_cleaner.py` (9), `test_dedup.py` (6), `test_fund_flow.py` (19), `test_price.py` (14), `test_scanner.py` (9), `test_event_fetcher.py` (11), `test_event_matcher.py` (11), `test_rag_store.py` (7), `test_retry.py` (13), `test_metrics.py` (5), `test_email.py` (6), `test_webhook.py` (11), `test_api.py` (8), `test_tasks.py` (8), `test_backtest.py` (12), `test_tuning.py` (19), `test_feedback.py` (19)
@@ -102,7 +102,7 @@ core/
   - XTick provides no fund flow data → `main_force_ratio` proxied by turnover percentile
   - `near_250d_low` proxied by intraday range position + pct_change (no 250-day history)
 
-### Quick Start (QuantLoom)
+### Quick Start (QuantLoom·量梭)
 
 ```bash
 # Install deps

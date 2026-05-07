@@ -1,6 +1,45 @@
+#
+# _    .-')              _  .-')    _   .-')      ('-.   .-')     ('-.
+#( '.( OO )_            ( \( -O )  ( '.( OO )_   _(  OO) ( OO ). ( OO )
+#  ,--.   ,--. .-'),-----. ,------.  ,--.   ,--.  (,------.(_/.  \_)(_/.  \_)
+#  |   `.'   |( OO'  .-.  '|  .---'  |   `.'   |   |  .---' \  `.'  / \  `.'  /
+#  |         |/   |  | |  ||  |      |         |   |  |      \     /   \     /
+#  |  |'.'|  |\_) |  |\|  ||  '--.   |  |'.'|  |  (|  '--.   \   /     \   /
+#  |  |   |  |  \ |  | |  ||  .--'   |  |   |  |   |  .--'  .-._)   \ .-._)   \
+#  |  |   |  |   `'  '-'  '|  `---.  |  |   |  |   |  `---. \       / \       /
+#  `--'   `--'     `-----' `------'  `--'   `--'   `------'  `-----'   `-----'
+#
+#                                  ·  量  梭  ·
+#                     A-Share Institutional Flow AI Monitor
+#
+# Copyright (c) 2026 The QuantLoom·量梭 project authors
+# All Rights Reserved.
+#
+# Use of this source code is governed by a BSD-style license
+# that can be found in the LICENSE file in the root of the source
+# tree. An additional intellectual property rights grant can be found
+# in the file PATENTS.  All contributing project authors may
+# be found in the AUTHORS file in the root of the source tree.
+#
+#               Author: chensong
+#               Date:   2026-05-08
+#
+#       QuantLoom·量梭 的野心，从不只是在手机上弹出几条信号
+#
+#       这座织机真正要为你织出的终极产物，是 RTX Pro 6000 —— 黑曜神机 的自由召唤权。
+#
+#            1. 它是躺在你机箱里的黑色方尖碑，数万核心如暗夜星海
+#            2. 它是本地训推大模型、实时织造全市场量能全景图、回溯十年资金指纹的物质根基
+#            3. 它过去只降落在超算中心、顶级量化基金和神秘矿场
+#
+#         QuantLoom·量梭 每织出一匹盈利的锦缎，都是在为这座黑色圣坛添一根金线。
+#         当金线积聚成缆，黑曜神机便会从虚空货架撕开一道裂缝，降临在你的阵中。
+#
+#          从此，你拥有了一座个人算力神殿。
+
 #!/usr/bin/env python3
 """
-QuantLoom 参数网格搜索调优 CLI
+QuantLoom·量梭 参数网格搜索调优 CLI
 遍历参数组合，复用回测引擎评分，输出最优配置
 
 用法:
@@ -22,7 +61,7 @@ from quant_loom.tuning.grid_search import GridSearchTuner, SEARCH_SPACES
 
 
 def parse_args():
-    p = argparse.ArgumentParser(description="QuantLoom 参数调优")
+    p = argparse.ArgumentParser(description="QuantLoom·量梭 参数调优")
     p.add_argument("--alert", type=str, help="调优目标异动类型 (breakout/accumulation/tail_chasing/event_driven/sector_linked)")
     p.add_argument("--all", action="store_true", help="调优所有异动类型")
     p.add_argument("--start", type=str, help="回测起始日期 YYYY-MM-DD")
@@ -34,13 +73,13 @@ def parse_args():
 
 def cmd_list_spaces():
     """列出搜索空间"""
-    print("\n参数搜索空间:")
+    print("\nParameter search space:")
     print("=" * 60)
     for alert_type, space in SEARCH_SPACES.items():
         n_combos = 1
         for v in space.values():
             n_combos *= len(v)
-        print(f"\n  [{alert_type}] — {n_combos} 种组合:")
+        print(f"\n  [{alert_type}] - {n_combos} combinations:")
         for param, values in space.items():
             print(f"    {param}: {values}")
     print()
@@ -51,7 +90,7 @@ def cmd_grid_search(alert_type: str, start_str: str = None, end_str: str = None)
     tuner = GridSearchTuner()
     combinations = tuner.generate_combinations(alert_type)
 
-    logger.info(f"开始 {alert_type} 网格搜索: {len(combinations)} 种组合")
+    logger.info(f"Starting {alert_type} grid search: {len(combinations)} combinations")
 
     results = []
     for i, params in enumerate(combinations):
@@ -62,14 +101,14 @@ def cmd_grid_search(alert_type: str, start_str: str = None, end_str: str = None)
         if not cached.empty:
             score = tuner.score_params(alert_type, params, cached)
             results.append(score)
-            logger.info(f"  [{i+1}/{len(combinations)}] 缓存命中: score={score['combined_score']:.4f}")
+            logger.info(f"  [{i+1}/{len(combinations)}] cache hit: score={score['combined_score']:.4f}")
         else:
             # 需要运行回测 — 此处为预留接口，实际回测在 run_backtest.py 中完成
-            logger.info(f"  [{i+1}/{len(combinations)}] 待回测: params={params} hash={ph[:8]}")
+            logger.info(f"  [{i+1}/{len(combinations)}] pending backtest: params={params} hash={ph[:8]}")
 
     if results:
         best = max(results, key=lambda r: r["combined_score"])
-        print(f"\n最优参数 ({alert_type}):")
+        print(f"\nBest params ({alert_type}):")
         print(f"  combined_score: {best['combined_score']:.4f}")
         print(f"  precision@3d:   {best['precision_3d']:.4f}")
         print(f"  avg_return@3d:  {best['avg_return_3d']:.4f}")
@@ -79,7 +118,7 @@ def cmd_grid_search(alert_type: str, start_str: str = None, end_str: str = None)
         # 导出最优
         tuner.export_best_config(alert_type, best["params"])
     else:
-        print(f"  警告: 无缓存回测结果。请先运行 run_backtest.py 填充回测数据。")
+        print(f"  Warning: No cached backtest results. Please run run_backtest.py first to populate backtest data.")
 
 
 def cmd_export():
@@ -102,11 +141,11 @@ def cmd_export():
 
         if best_params:
             tuner.export_best_config(alert_type, best_params)
-            logger.info(f"{alert_type}: 最优 score={best_score:.4f}")
+            logger.info(f"{alert_type}: optimal score={best_score:.4f}")
         else:
-            logger.info(f"{alert_type}: 无缓存数据，跳过")
+            logger.info(f"{alert_type}: no cached data, skipping")
 
-    print("\n最优配置已导出到 config/rules.tuned.yaml")
+    print("\nOptimal config exported to config/rules.tuned.yaml")
 
 
 def main():
@@ -130,10 +169,10 @@ def main():
         return
 
     # 默认
-    print("用法: python scripts/run_tuning.py --alert <type> [--start YYYY-MM-DD] [--end YYYY-MM-DD]")
-    print("      python scripts/run_tuning.py --all")
-    print("      python scripts/run_tuning.py --list-spaces")
-    print(f"可用类型: {list(SEARCH_SPACES.keys())}")
+    print("Usage: python scripts/run_tuning.py --alert <type> [--start YYYY-MM-DD] [--end YYYY-MM-DD]")
+    print("       python scripts/run_tuning.py --all")
+    print("       python scripts/run_tuning.py --list-spaces")
+    print(f"Available types: {list(SEARCH_SPACES.keys())}")
 
 
 if __name__ == "__main__":

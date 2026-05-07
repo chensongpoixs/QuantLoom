@@ -1,6 +1,45 @@
+#
+# _    .-')              _  .-')    _   .-')      ('-.   .-')     ('-.
+#( '.( OO )_            ( \( -O )  ( '.( OO )_   _(  OO) ( OO ). ( OO )
+#  ,--.   ,--. .-'),-----. ,------.  ,--.   ,--.  (,------.(_/.  \_)(_/.  \_)
+#  |   `.'   |( OO'  .-.  '|  .---'  |   `.'   |   |  .---' \  `.'  / \  `.'  /
+#  |         |/   |  | |  ||  |      |         |   |  |      \     /   \     /
+#  |  |'.'|  |\_) |  |\|  ||  '--.   |  |'.'|  |  (|  '--.   \   /     \   /
+#  |  |   |  |  \ |  | |  ||  .--'   |  |   |  |   |  .--'  .-._)   \ .-._)   \
+#  |  |   |  |   `'  '-'  '|  `---.  |  |   |  |   |  `---. \       / \       /
+#  `--'   `--'     `-----' `------'  `--'   `--'   `------'  `-----'   `-----'
+#
+#                                  ·  量  梭  ·
+#                     A-Share Institutional Flow AI Monitor
+#
+# Copyright (c) 2026 The QuantLoom·量梭 project authors
+# All Rights Reserved.
+#
+# Use of this source code is governed by a BSD-style license
+# that can be found in the LICENSE file in the root of the source
+# tree. An additional intellectual property rights grant can be found
+# in the file PATENTS.  All contributing project authors may
+# be found in the AUTHORS file in the root of the source tree.
+#
+#               Author: chensong
+#               Date:   2026-05-08
+#
+#       QuantLoom·量梭 的野心，从不只是在手机上弹出几条信号
+#
+#       这座织机真正要为你织出的终极产物，是 RTX Pro 6000 —— 黑曜神机 的自由召唤权。
+#
+#            1. 它是躺在你机箱里的黑色方尖碑，数万核心如暗夜星海
+#            2. 它是本地训推大模型、实时织造全市场量能全景图、回溯十年资金指纹的物质根基
+#            3. 它过去只降落在超算中心、顶级量化基金和神秘矿场
+#
+#         QuantLoom·量梭 每织出一匹盈利的锦缎，都是在为这座黑色圣坛添一根金线。
+#         当金线积聚成缆，黑曜神机便会从虚空货架撕开一道裂缝，降临在你的阵中。
+#
+#          从此，你拥有了一座个人算力神殿。
+
 #!/usr/bin/env python3
 """
-QuantLoom 回测引擎
+QuantLoom·量梭 回测引擎
 从历史 K 线重建日频快照，逐日运行规则扫描，计算后续表现指标
 
 用法:
@@ -31,7 +70,7 @@ from quant_loom.storage.models import BacktestResult, FundFlowDaily
 
 
 def parse_args():
-    p = argparse.ArgumentParser(description="QuantLoom 回测引擎")
+    p = argparse.ArgumentParser(description="QuantLoom·量梭 回测引擎")
     p.add_argument("--start", type=str, help="起始日期 YYYY-MM-DD")
     p.add_argument("--end", type=str, help="结束日期 YYYY-MM-DD")
     p.add_argument("--date", type=str, help="单日回测 YYYY-MM-DD")
@@ -54,7 +93,7 @@ def fetch_kline_data(codes: List[str]) -> pd.DataFrame:
     """
     from quant_loom.data_ingestion.akshare_fetcher import AkshareFetcher
 
-    logger.info(f"获取 {len(codes)} 只股票历史 K 线...")
+    logger.info(f"Fetching historical K-line data for {len(codes)} stocks...")
 
     fetcher = AkshareFetcher()
     all_frames = []
@@ -73,9 +112,9 @@ def fetch_kline_data(codes: List[str]) -> pd.DataFrame:
                 if df is not None and not df.empty:
                     all_frames.append(df)
             except Exception as e:
-                logger.debug(f"K 线获取失败 {code}: {e}")
+                logger.debug(f"K-line fetch failed for {code}: {e}")
             if done % 100 == 0:
-                logger.info(f"  K 线进度: {done}/{len(codes)}")
+                logger.info(f"  K-line progress: {done}/{len(codes)}")
 
     if not all_frames:
         return pd.DataFrame()
@@ -84,7 +123,7 @@ def fetch_kline_data(codes: List[str]) -> pd.DataFrame:
     # 标准化列名: AkShare 中文列名 → 英文
     result = _normalize_kline_columns(result)
     result["date"] = pd.to_datetime(result["date"])
-    logger.info(f"K 线获取完成: {len(result)} 行, {result['code'].nunique()} 只股票")
+    logger.info(f"K-line fetch complete: {len(result)} rows, {result['code'].nunique()} stocks")
     return result
 
 
@@ -109,8 +148,8 @@ def _fetch_single_kline(fetcher, code: str) -> Optional[pd.DataFrame]:
         if df is not None and not df.empty:
             df["code"] = str(code).zfill(6)
             return df
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"K-line fetch failed for {code}: {e}")
     return None
 
 
@@ -203,7 +242,7 @@ def build_snapshot(kline_df: pd.DataFrame, t_date: date) -> pd.DataFrame:
 def build_fund_flow_snapshot(t_date: date, codes: List[str]) -> pd.DataFrame:
     """从 sq_fund_flow_daily 重建当日资金流快照"""
     if not mysql_client.ping():
-        logger.warning("MySQL 不可用，使用空资金流")
+        logger.warning("MySQL unavailable, using empty fund flow")
         return pd.DataFrame()
 
     try:
@@ -229,7 +268,7 @@ def build_fund_flow_snapshot(t_date: date, codes: List[str]) -> pd.DataFrame:
                 })
             return pd.DataFrame(data)
     except Exception as e:
-        logger.warning(f"资金流查询失败 {t_date}: {e}")
+        logger.warning(f"Fund flow query failed {t_date}: {e}")
         return pd.DataFrame()
 
 
@@ -278,13 +317,13 @@ def compute_outcomes(kline_df: pd.DataFrame, code: str, t_date: date,
 def run_backtest_day(kline_df: pd.DataFrame, t_date: date, params_hash: str,
                      dry_run: bool, codes_filter: Optional[List[str]] = None):
     """执行单日回测"""
-    logger.info(f"--- 回测 {t_date} ---")
+    logger.info(f"--- Backtest {t_date} ---")
     t0 = time.time()
 
     # 1. 重建行情快照
     snapshot = build_snapshot(kline_df, t_date)
     if snapshot.empty:
-        logger.info(f"  {t_date} 无行情数据，跳过")
+        logger.info(f"  {t_date} no market data, skipping")
         return 0
 
     # 2. 重建资金流
@@ -309,7 +348,7 @@ def run_backtest_day(kline_df: pd.DataFrame, t_date: date, params_hash: str,
         consecutive_inflow_map=consecutive_map,
     )
 
-    logger.info(f"  {t_date}: {len(alerts)} 个异动信号 (回测模式)")
+    logger.info(f"  {t_date}: {len(alerts)} anomaly signals (backtest mode)")
 
     # 7. 计算 outcome + 入库
     saved = 0
@@ -339,10 +378,10 @@ def run_backtest_day(kline_df: pd.DataFrame, t_date: date, params_hash: str,
                 mysql_client.insert_or_update(record)
                 saved += 1
             except Exception as e:
-                logger.warning(f"回测结果入库失败 {code}: {e}")
+                logger.warning(f"Failed to save backtest result for {code}: {e}")
 
     elapsed = time.time() - t0
-    logger.info(f"  {t_date} 完成: {saved} 条入库, 耗时 {elapsed:.1f}s")
+    logger.info(f"  {t_date} done: {saved} saved, elapsed {elapsed:.1f}s")
     return saved
 
 
@@ -375,7 +414,7 @@ def _compute_hist_consecutive_inflow(t_date: date, codes: List[str]) -> Dict[str
                 if days > 0:
                     result[code] = days
     except Exception as e:
-        logger.warning(f"查询历史资金流失败 {t_date}: {e}")
+        logger.warning(f"Historical fund flow query failed {t_date}: {e}")
 
     return result
 
@@ -416,10 +455,10 @@ def main():
         # 默认: 最近 30 个交易日
         end = date.today()
         start = end - timedelta(days=60)
-        logger.info(f"未指定日期范围，使用最近 60 天: {start} ~ {end}")
+        logger.info(f"Date range not specified, using last 60 days: {start} ~ {end}")
 
     trading_dates = get_trading_dates(start, end)
-    logger.info(f"回测范围: {start} ~ {end}, 共 {len(trading_dates)} 个交易日")
+    logger.info(f"Backtest range: {start} ~ {end}, {len(trading_dates)} trading days total")
 
     codes_filter = None
     if args.codes:
@@ -430,7 +469,7 @@ def main():
     kline_df = fetch_kline_data(all_codes)
 
     if kline_df.empty:
-        logger.error("无法获取历史 K 线数据")
+        logger.error("Unable to fetch historical K-line data")
         return
 
     total_saved = 0
@@ -439,14 +478,14 @@ def main():
             saved = run_backtest_day(kline_df, t_date, params_hash, args.dry_run, codes_filter)
             total_saved += saved
         except Exception as e:
-            logger.error(f"回测 {t_date} 异常: {e}")
+            logger.error(f"Backtest {t_date} exception: {e}")
 
         # 控制 API 速率
         if i < len(trading_dates) - 1:
             time.sleep(0.5)
 
-    logger.info(f"回测完成: 共 {total_saved} 条结果")
-    print(f"\n回测完成: {len(trading_dates)} 个交易日, {total_saved} 条结果")
+    logger.info(f"Backtest complete: {total_saved} results total")
+    print(f"\nBacktest complete: {len(trading_dates)} trading days, {total_saved} results")
 
 
 def _get_default_codes() -> List[str]:
@@ -461,7 +500,7 @@ def _get_default_codes() -> List[str]:
         pass
 
     # 回退: 沪深 300 成分股 (少量代表性股票)
-    logger.warning("无法获取全市场代码，使用沪深300前50只")
+    logger.warning("Unable to fetch full market codes, using first 50 of CSI 300")
     return [
         "000001", "000002", "000063", "000100", "000333", "000338", "000425",
         "000568", "000625", "000651", "000725", "000768", "000776", "000858",

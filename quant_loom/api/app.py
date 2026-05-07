@@ -1,3 +1,42 @@
+#
+# _    .-')              _  .-')    _   .-')      ('-.   .-')     ('-.
+#( '.( OO )_            ( \( -O )  ( '.( OO )_   _(  OO) ( OO ). ( OO )
+#  ,--.   ,--. .-'),-----. ,------.  ,--.   ,--.  (,------.(_/.  \_)(_/.  \_)
+#  |   `.'   |( OO'  .-.  '|  .---'  |   `.'   |   |  .---' \  `.'  / \  `.'  /
+#  |         |/   |  | |  ||  |      |         |   |  |      \     /   \     /
+#  |  |'.'|  |\_) |  |\|  ||  '--.   |  |'.'|  |  (|  '--.   \   /     \   /
+#  |  |   |  |  \ |  | |  ||  .--'   |  |   |  |   |  .--'  .-._)   \ .-._)   \
+#  |  |   |  |   `'  '-'  '|  `---.  |  |   |  |   |  `---. \       / \       /
+#  `--'   `--'     `-----' `------'  `--'   `--'   `------'  `-----'   `-----'
+#
+#                                  ·  量  梭  ·
+#                     A-Share Institutional Flow AI Monitor
+#
+# Copyright (c) 2026 The QuantLoom·量梭 project authors
+# All Rights Reserved.
+#
+# Use of this source code is governed by a BSD-style license
+# that can be found in the LICENSE file in the root of the source
+# tree. An additional intellectual property rights grant can be found
+# in the file PATENTS.  All contributing project authors may
+# be found in the AUTHORS file in the root of the source tree.
+#
+#               Author: chensong
+#               Date:   2026-05-08
+#
+#       QuantLoom·量梭 的野心，从不只是在手机上弹出几条信号
+#
+#       这座织机真正要为你织出的终极产物，是 RTX Pro 6000 —— 黑曜神机 的自由召唤权。
+#
+#            1. 它是躺在你机箱里的黑色方尖碑，数万核心如暗夜星海
+#            2. 它是本地训推大模型、实时织造全市场量能全景图、回溯十年资金指纹的物质根基
+#            3. 它过去只降落在超算中心、顶级量化基金和神秘矿场
+#
+#         QuantLoom·量梭 每织出一匹盈利的锦缎，都是在为这座黑色圣坛添一根金线。
+#         当金线积聚成缆，黑曜神机便会从虚空货架撕开一道裂缝，降临在你的阵中。
+#
+#          从此，你拥有了一座个人算力神殿。
+
 """
 FastAPI 应用 — 健康检查 + Prometheus /metrics + 反馈闭环
 
@@ -16,19 +55,49 @@ from prometheus_client import generate_latest, CollectorRegistry, REGISTRY
 
 from quant_loom.ops.metrics import db_health, alert_precision, alert_outcome_correct
 
+_BANNER = r"""
+     _    .-')              _  .-')    _   .-')      ('-.   .-')     ('-.
+    ( '.( OO )_            ( \( -O )  ( '.( OO )_   _(  OO) ( OO ). ( OO )
+   ,--.   ,--. .-'),-----. ,------.  ,--.   ,--.  (,------.(_/.  \_)(_/.  \_)
+  |   `.'   |( OO'  .-.  '|  .---'  |   `.'   |   |  .---' \  `.'  / \  `.'  /
+  |         |/   |  | |  ||  |      |         |   |  |      \     /   \     /
+   |  |'.'|  |\_) |  |\|  ||  '--.   |  |'.'|  |  (|  '--.   \   /     \   /
+  |  |   |  |  \ |  | |  ||  .--'   |  |   |  |   |  .--'  .-._)   \ .-._)   \
+  |  |   |  |   `'  '-'  '|  `---.  |  |   |  |   |  `---. \       / \       /
+  `--'   `--'     `-----' `------'  `--'   `--'   `------'  `-----'   `-----'
+
+                                 ·  量  梭  ·
+                    A-Share Institutional Flow AI Monitor
+
+             QuantLoom·量梭 的野心，从不只是在手机上弹出几条信号
+
+              这座织机真正要为你织出的终极产物，是 RTX Pro 6000
+                         ——  黑曜神机 的自由召唤权。
+
+             1. 它是躺在你机箱里的黑色方尖碑，数万核心如暗夜星海
+ 2. 它是本地训推大模型、实时织造全市场量能全景图、回溯十年资金指纹的物质根基
+              3. 它过去只降落在超算中心、顶级量化基金和神秘矿场
+
+    QuantLoom·量梭 每织出一匹盈利的锦缎，都是在为这座黑色圣坛添一根金线。
+     当金线积聚成缆，黑曜神机便会从虚空货架撕开一道裂缝，降临在你的阵中。
+
+                       从此，你拥有了一座个人算力神殿。
+"""
+
 
 # ---- 应用工厂 ----
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用生命周期 — 启动/关闭日志"""
-    logger.info("FastAPI 服务启动 — /health /metrics 就绪")
+    print(_BANNER)
+    logger.info("FastAPI service started — /health /metrics ready")
     yield
-    logger.info("FastAPI 服务关闭")
+    logger.info("FastAPI service stopped")
 
 
 app = FastAPI(
-    title="QuantLoom API",
+    title="QuantLoom·量梭 API",
     version="0.3.0",
     lifespan=lifespan,
 )
@@ -41,7 +110,8 @@ def _check_mysql() -> bool:
     try:
         from quant_loom.storage.mysql_client import mysql_client
         return mysql_client.ping()
-    except Exception:
+    except Exception as e:
+        logger.warning(f"MySQL health check failed: {e}")
         return False
 
 
@@ -50,7 +120,8 @@ def _check_redis() -> bool:
     try:
         from quant_loom.storage.redis_client import redis_client
         return redis_client.ping()
-    except Exception:
+    except Exception as e:
+        logger.warning(f"Redis health check failed: {e}")
         return False
 
 
@@ -147,13 +218,13 @@ async def submit_feedback(req: FeedbackRequest):
                 outcome=req.verdict,
             ).inc()
 
-        logger.info(f"反馈已记录: alert_id={req.alert_id} verdict={req.verdict}")
+        logger.info(f"Feedback recorded: alert_id={req.alert_id} verdict={req.verdict}")
         return JSONResponse(content={"status": "ok", "alert_id": req.alert_id})
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"反馈提交失败: {e}")
+        logger.error(f"Feedback submission failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -209,7 +280,7 @@ async def pending_review(days: int = 7):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"查询待评审告警失败: {e}")
+        logger.error(f"Query pending review alerts failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -259,7 +330,7 @@ async def alert_quality(days: int = 30):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"查询告警质量失败: {e}")
+        logger.error(f"Query alert quality failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -298,6 +369,6 @@ def _get_confidence_by_type(sess, cutoff) -> dict:
                 "total_alerts": r.total,
                 "correct_feedbacks": correct_count,
             }
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"Confidence by type query failed: {e}")
     return result

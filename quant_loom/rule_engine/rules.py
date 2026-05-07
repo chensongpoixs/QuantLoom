@@ -1,3 +1,42 @@
+#
+# _    .-')              _  .-')    _   .-')      ('-.   .-')     ('-.
+#( '.( OO )_            ( \( -O )  ( '.( OO )_   _(  OO) ( OO ). ( OO )
+#  ,--.   ,--. .-'),-----. ,------.  ,--.   ,--.  (,------.(_/.  \_)(_/.  \_)
+#  |   `.'   |( OO'  .-.  '|  .---'  |   `.'   |   |  .---' \  `.'  / \  `.'  /
+#  |         |/   |  | |  ||  |      |         |   |  |      \     /   \     /
+#  |  |'.'|  |\_) |  |\|  ||  '--.   |  |'.'|  |  (|  '--.   \   /     \   /
+#  |  |   |  |  \ |  | |  ||  .--'   |  |   |  |   |  .--'  .-._)   \ .-._)   \
+#  |  |   |  |   `'  '-'  '|  `---.  |  |   |  |   |  `---. \       / \       /
+#  `--'   `--'     `-----' `------'  `--'   `--'   `------'  `-----'   `-----'
+#
+#                                  ·  量  梭  ·
+#                     A-Share Institutional Flow AI Monitor
+#
+# Copyright (c) 2026 The QuantLoom·量梭 project authors
+# All Rights Reserved.
+#
+# Use of this source code is governed by a BSD-style license
+# that can be found in the LICENSE file in the root of the source
+# tree. An additional intellectual property rights grant can be found
+# in the file PATENTS.  All contributing project authors may
+# be found in the AUTHORS file in the root of the source tree.
+#
+#               Author: chensong
+#               Date:   2026-05-08
+#
+#       QuantLoom·量梭 的野心，从不只是在手机上弹出几条信号
+#
+#       这座织机真正要为你织出的终极产物，是 RTX Pro 6000 —— 黑曜神机 的自由召唤权。
+#
+#            1. 它是躺在你机箱里的黑色方尖碑，数万核心如暗夜星海
+#            2. 它是本地训推大模型、实时织造全市场量能全景图、回溯十年资金指纹的物质根基
+#            3. 它过去只降落在超算中心、顶级量化基金和神秘矿场
+#
+#         QuantLoom·量梭 每织出一匹盈利的锦缎，都是在为这座黑色圣坛添一根金线。
+#         当金线积聚成缆，黑曜神机便会从虚空货架撕开一道裂缝，降临在你的阵中。
+#
+#          从此，你拥有了一座个人算力神殿。
+
 """
 五类机构异动信号规则
 每条规则接收一行行情+资金流合并数据，返回是否匹配及详情
@@ -49,19 +88,19 @@ class RuleEngine:
         checks = []
         # 涨幅
         pct_ok = cfg["pct_change_min"] <= pct <= cfg["pct_change_max"]
-        checks.append(("涨幅%", pct, f"{cfg['pct_change_min']}-{cfg['pct_change_max']}", pct_ok))
+        checks.append(("pct_change%", pct, f"{cfg['pct_change_min']}-{cfg['pct_change_max']}", pct_ok))
 
         # 成交额
         turnover_ok = turnover >= cfg["turnover_amount_min"]
-        checks.append(("成交额", turnover, f">={cfg['turnover_amount_min']}", turnover_ok))
+        checks.append(("turnover", turnover, f">={cfg['turnover_amount_min']}", turnover_ok))
 
         # 量比
         vol_ok = vol_ratio >= cfg["volume_ratio_min"]
-        checks.append(("量比", vol_ratio, f">={cfg['volume_ratio_min']}", vol_ok))
+        checks.append(("volume_ratio", vol_ratio, f">={cfg['volume_ratio_min']}", vol_ok))
 
         # 主力净流入占比
         mf_ok = main_force >= cfg["super_large_inflow_ratio_min"]
-        checks.append(("主力净流入占比%", main_force, f">={cfg['super_large_inflow_ratio_min']}", mf_ok))
+        checks.append(("main_force_ratio%", main_force, f">={cfg['super_large_inflow_ratio_min']}", mf_ok))
 
         all_ok = all(c[3] for c in checks)
         if not all_ok:
@@ -73,7 +112,7 @@ class RuleEngine:
         return AlertResult(
             matched=True,
             alert_type="breakout",
-            trigger_reason=f"放量上攻: {reason}",
+            trigger_reason=f"Volume-driven breakout: {reason}",
             confidence_score=score,
             risk_level="P1" if score >= 0.8 else "P2",
             details={"checks": [(c[0], c[1], c[2], c[3]) for c in checks]},
@@ -99,7 +138,7 @@ class RuleEngine:
             return AlertResult()
 
         score = 0.5 + 0.15 * near_low + 0.15 * min(consecutive_inflow_days / 10, 1) + 0.2 * inflow_ok
-        reason = f"底部吸筹: 近250日低位={near_low}, 连续流入{consecutive_inflow_days}天, 主力占比={main_force:.2f}%"
+        reason = f"Bottom accumulation: near 250d low={near_low}, consecutive inflow {consecutive_inflow_days} days, main force ratio={main_force:.2f}%"
         return AlertResult(
             matched=True,
             alert_type="accumulation",
@@ -153,7 +192,7 @@ class RuleEngine:
             score = 0.55
             risk = "P2"
 
-        reason = f"尾盘抢筹: 涨幅={pct:.2f}%, 主力占比={main_force:.2f}%, 主动买盘={active_buy:.2f}%"
+        reason = f"End-of-day buying: pct_change={pct:.2f}%, main force ratio={main_force:.2f}%, active buy ratio={active_buy:.2f}%"
         return AlertResult(
             matched=True,
             alert_type="tail_chasing",
@@ -190,7 +229,7 @@ class RuleEngine:
         if has_event:
             score = 0.80
 
-        reason = f"事件驱动: 涨跌={pct:.2f}%, 成交额={turnover:.0f}, 主力占比={main_force:.2f}%"
+        reason = f"Event-driven: pct_change={pct:.2f}%, turnover={turnover:.0f}, main force ratio={main_force:.2f}%"
         return AlertResult(
             matched=True,
             alert_type="event_driven",
@@ -225,7 +264,7 @@ class RuleEngine:
             return AlertResult()
 
         score = 0.45 + 0.3 * min(sector_pct / 5, 1) + 0.25 * min(sector_stock_count / 10, 1)
-        reason = f"板块联动: {sector_stats.get('sector_name', '')} 板块涨幅{sector_pct:.2f}%, {sector_stock_count}只同步上涨"
+        reason = f"Sector-linked: {sector_stats.get('sector_name', '')} sector up {sector_pct:.2f}%, {sector_stock_count} stocks rising together"
         return AlertResult(
             matched=True,
             alert_type="sector_linked",

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# QuantLoom Celery Worker 启动脚本
+# QuantLoom·量梭 Celery Worker 启动脚本
 # 用法: bash scripts/start_worker.sh
 
 set -euo pipefail

@@ -1,3 +1,42 @@
+#
+# _    .-')              _  .-')    _   .-')      ('-.   .-')     ('-.
+#( '.( OO )_            ( \( -O )  ( '.( OO )_   _(  OO) ( OO ). ( OO )
+#  ,--.   ,--. .-'),-----. ,------.  ,--.   ,--.  (,------.(_/.  \_)(_/.  \_)
+#  |   `.'   |( OO'  .-.  '|  .---'  |   `.'   |   |  .---' \  `.'  / \  `.'  /
+#  |         |/   |  | |  ||  |      |         |   |  |      \     /   \     /
+#  |  |'.'|  |\_) |  |\|  ||  '--.   |  |'.'|  |  (|  '--.   \   /     \   /
+#  |  |   |  |  \ |  | |  ||  .--'   |  |   |  |   |  .--'  .-._)   \ .-._)   \
+#  |  |   |  |   `'  '-'  '|  `---.  |  |   |  |   |  `---. \       / \       /
+#  `--'   `--'     `-----' `------'  `--'   `--'   `------'  `-----'   `-----'
+#
+#                                  ·  量  梭  ·
+#                     A-Share Institutional Flow AI Monitor
+#
+# Copyright (c) 2026 The QuantLoom·量梭 project authors
+# All Rights Reserved.
+#
+# Use of this source code is governed by a BSD-style license
+# that can be found in the LICENSE file in the root of the source
+# tree. An additional intellectual property rights grant can be found
+# in the file PATENTS.  All contributing project authors may
+# be found in the AUTHORS file in the root of the source tree.
+#
+#               Author: chensong
+#               Date:   2026-05-08
+#
+#       QuantLoom·量梭 的野心，从不只是在手机上弹出几条信号
+#
+#       这座织机真正要为你织出的终极产物，是 RTX Pro 6000 —— 黑曜神机 的自由召唤权。
+#
+#            1. 它是躺在你机箱里的黑色方尖碑，数万核心如暗夜星海
+#            2. 它是本地训推大模型、实时织造全市场量能全景图、回溯十年资金指纹的物质根基
+#            3. 它过去只降落在超算中心、顶级量化基金和神秘矿场
+#
+#         QuantLoom·量梭 每织出一匹盈利的锦缎，都是在为这座黑色圣坛添一根金线。
+#         当金线积聚成缆，黑曜神机便会从虚空货架撕开一道裂缝，降临在你的阵中。
+#
+#          从此，你拥有了一座个人算力神殿。
+
 """
 RAG 上下文存储模块
 将新闻/公告/研报事件存储到 MySQL，并为 LLM 分析检索上下文
@@ -46,10 +85,10 @@ class RAGStore:
                 mysql_client.insert_or_update(record)
                 saved += 1
             except Exception as ex:
-                logger.debug(f"事件写入跳过 (可能重复): {e.get('title', '')} - {ex}")
+                logger.debug(f"Event write skipped (possible duplicate): {e.get('title', '')} - {ex}")
 
         if saved > 0:
-            logger.info(f"RAGStore 写入事件: {saved} 条")
+            logger.info(f"RAGStore wrote events: {saved}")
         return saved
 
     def deduplicate_and_store(self, events: list[dict]) -> int:
@@ -74,7 +113,7 @@ class RAGStore:
 
         skipped = len(events) - len(unique)
         if skipped > 0:
-            logger.debug(f"事件去重: {len(events)} -> {len(unique)} (跳过 {skipped} 条重复)")
+            logger.debug(f"Event dedup: {len(events)} -> {len(unique)} (skipped {skipped} duplicates)")
 
         return self.store_events(unique)
 
@@ -116,7 +155,7 @@ class RAGStore:
                     for r in rows
                 ]
         except Exception as e:
-            logger.warning(f"事件查询失败 {code}: {e}")
+            logger.warning(f"Event query failed {code}: {e}")
             return []
 
     # ---- 上下文构建 ----
@@ -134,15 +173,15 @@ class RAGStore:
             events = self.get_events_for_stock(code)[: self.max_context_events]
 
         if not events:
-            return "（无近期相关事件）"
+            return "(no recent relevant events)"
 
         parts = []
         total_chars = 0
         for i, e in enumerate(events):
             event_type_label = {
-                "news": "新闻", "announcement": "公告",
-                "report": "研报",
-            }.get(e.get("event_type", ""), "事件")
+                "news": "News", "announcement": "Announcement",
+                "report": "Research Report",
+            }.get(e.get("event_type", ""), "Event")
 
             pub_str = ""
             pub = e.get("published_at")
@@ -154,7 +193,7 @@ class RAGStore:
 
             entry = (
                 f"[{i+1}] {event_type_label} | {pub_str} | {e.get('title', '')}\n"
-                f"    内容摘要: {(e.get('content', '') or '')[:200]}"
+                f"    Summary: {(e.get('content', '') or '')[:200]}"
             )
             total_chars += len(entry)
             if total_chars > self.max_content_chars:

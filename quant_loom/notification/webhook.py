@@ -1,3 +1,42 @@
+#
+# _    .-')              _  .-')    _   .-')      ('-.   .-')     ('-.
+#( '.( OO )_            ( \( -O )  ( '.( OO )_   _(  OO) ( OO ). ( OO )
+#  ,--.   ,--. .-'),-----. ,------.  ,--.   ,--.  (,------.(_/.  \_)(_/.  \_)
+#  |   `.'   |( OO'  .-.  '|  .---'  |   `.'   |   |  .---' \  `.'  / \  `.'  /
+#  |         |/   |  | |  ||  |      |         |   |  |      \     /   \     /
+#  |  |'.'|  |\_) |  |\|  ||  '--.   |  |'.'|  |  (|  '--.   \   /     \   /
+#  |  |   |  |  \ |  | |  ||  .--'   |  |   |  |   |  .--'  .-._)   \ .-._)   \
+#  |  |   |  |   `'  '-'  '|  `---.  |  |   |  |   |  `---. \       / \       /
+#  `--'   `--'     `-----' `------'  `--'   `--'   `------'  `-----'   `-----'
+#
+#                                  ·  量  梭  ·
+#                     A-Share Institutional Flow AI Monitor
+#
+# Copyright (c) 2026 The QuantLoom·量梭 project authors
+# All Rights Reserved.
+#
+# Use of this source code is governed by a BSD-style license
+# that can be found in the LICENSE file in the root of the source
+# tree. An additional intellectual property rights grant can be found
+# in the file PATENTS.  All contributing project authors may
+# be found in the AUTHORS file in the root of the source tree.
+#
+#               Author: chensong
+#               Date:   2026-05-08
+#
+#       QuantLoom·量梭 的野心，从不只是在手机上弹出几条信号
+#
+#       这座织机真正要为你织出的终极产物，是 RTX Pro 6000 —— 黑曜神机 的自由召唤权。
+#
+#            1. 它是躺在你机箱里的黑色方尖碑，数万核心如暗夜星海
+#            2. 它是本地训推大模型、实时织造全市场量能全景图、回溯十年资金指纹的物质根基
+#            3. 它过去只降落在超算中心、顶级量化基金和神秘矿场
+#
+#         QuantLoom·量梭 每织出一匹盈利的锦缎，都是在为这座黑色圣坛添一根金线。
+#         当金线积聚成缆，黑曜神机便会从虚空货架撕开一道裂缝，降临在你的阵中。
+#
+#          从此，你拥有了一座个人算力神殿。
+
 """
 企业微信 / 飞书 / 钉钉 Webhook 通知
 含 NotificationLog 写入
@@ -60,12 +99,12 @@ class WebhookNotifier:
         emoji = emoji_map.get(alert.get("risk_level", "P3"), "⚪")
 
         content = (
-            f"## {emoji} 机构异动告警\n"
+            f"## {emoji} Institutional Flow Alert\n"
             f"> **{alert.get('name', '')}** ({alert.get('code', '')})\n"
-            f"> 类型: {alert.get('alert_type', '')}\n"
-            f"> 原因: {alert.get('trigger_reason', '')}\n"
-            f"> 置信度: {alert.get('confidence_score', 0):.2f}\n"
-            f"> 风险: {alert.get('risk_level', 'P3')}\n"
+            f"> Type: {alert.get('alert_type', '')}\n"
+            f"> Reason: {alert.get('trigger_reason', '')}\n"
+            f"> Confidence: {alert.get('confidence_score', 0):.2f}\n"
+            f"> Risk: {alert.get('risk_level', 'P3')}\n"
         )
         if alert.get("ai_summary"):
             content += f"> AI: {alert['ai_summary']}\n"
@@ -81,12 +120,12 @@ class WebhookNotifier:
         try:
             ok, txt = _do_post()
             if not ok:
-                logger.warning(f"企业微信推送非 200: {txt}")
+                logger.warning(f"WeCom push non-200: {txt}")
             else:
-                logger.debug("企业微信推送: 成功")
+                logger.debug("WeCom push: success")
             return ok
         except Exception as e:
-            logger.error(f"企业微信推送失败 (重试耗尽): {e}")
+            logger.error(f"WeCom push failed (retries exhausted): {e}")
             return False
 
     # ---- 飞书 ----
@@ -97,14 +136,14 @@ class WebhookNotifier:
             "msg_type": "interactive",
             "card": {
                 "header": {
-                    "title": {"tag": "plain_text", "content": f"机构异动: {alert.get('name', '')} {alert.get('code', '')}"},
+                    "title": {"tag": "plain_text", "content": f"Institutional Flow: {alert.get('name', '')} {alert.get('code', '')}"},
                     "template": "red" if alert.get("risk_level") == "P1" else "yellow",
                 },
                 "elements": [
-                    {"tag": "div", "text": {"tag": "lark_md", "content": f"**类型**: {alert.get('alert_type', '')}"}},
-                    {"tag": "div", "text": {"tag": "lark_md", "content": f"**原因**: {alert.get('trigger_reason', '')}"}},
-                    {"tag": "div", "text": {"tag": "lark_md", "content": f"**置信度**: {alert.get('confidence_score', 0):.2f}"}},
-                    {"tag": "div", "text": {"tag": "lark_md", "content": f"**风险**: {alert.get('risk_level', 'P3')}"}},
+                    {"tag": "div", "text": {"tag": "lark_md", "content": f"**Type**: {alert.get('alert_type', '')}"}},
+                    {"tag": "div", "text": {"tag": "lark_md", "content": f"**Reason**: {alert.get('trigger_reason', '')}"}},
+                    {"tag": "div", "text": {"tag": "lark_md", "content": f"**Confidence**: {alert.get('confidence_score', 0):.2f}"}},
+                    {"tag": "div", "text": {"tag": "lark_md", "content": f"**Risk**: {alert.get('risk_level', 'P3')}"}},
                 ],
             },
         }
@@ -117,12 +156,12 @@ class WebhookNotifier:
         try:
             ok, txt = _do_post()
             if not ok:
-                logger.warning(f"飞书推送非 200: {txt}")
+                logger.warning(f"Feishu push non-200: {txt}")
             else:
-                logger.debug("飞书推送: 成功")
+                logger.debug("Feishu push: success")
             return ok
         except Exception as e:
-            logger.error(f"飞书推送失败 (重试耗尽): {e}")
+            logger.error(f"Feishu push failed (retries exhausted): {e}")
             return False
 
     # ---- 钉钉 ----
@@ -132,17 +171,17 @@ class WebhookNotifier:
         emoji_map = {"P1": "🔴", "P2": "🟡", "P3": "⚪"}
         emoji = emoji_map.get(alert.get("risk_level", "P3"), "⚪")
 
-        title = f"{emoji} 机构异动告警"
+        title = f"{emoji} Institutional Flow Alert"
         text = (
             f"# {title}\n\n"
-            f"- **股票**: {alert.get('name', '')} ({alert.get('code', '')})\n"
-            f"- **类型**: {alert.get('alert_type', '')}\n"
-            f"- **原因**: {alert.get('trigger_reason', '')}\n"
-            f"- **置信度**: {alert.get('confidence_score', 0):.2f}\n"
-            f"- **风险等级**: {alert.get('risk_level', 'P3')}\n"
+            f"- **Stock**: {alert.get('name', '')} ({alert.get('code', '')})\n"
+            f"- **Type**: {alert.get('alert_type', '')}\n"
+            f"- **Reason**: {alert.get('trigger_reason', '')}\n"
+            f"- **Confidence**: {alert.get('confidence_score', 0):.2f}\n"
+            f"- **Risk Level**: {alert.get('risk_level', 'P3')}\n"
         )
         if alert.get("ai_summary"):
-            text += f"- **AI 分析**: {alert['ai_summary']}\n"
+            text += f"- **AI Analysis**: {alert['ai_summary']}\n"
 
         payload = {
             "msgtype": "markdown",
@@ -164,12 +203,12 @@ class WebhookNotifier:
         try:
             ok, txt = _do_post()
             if not ok:
-                logger.warning(f"钉钉推送非 200: {txt}")
+                logger.warning(f"DingTalk push non-200: {txt}")
             else:
-                logger.debug("钉钉推送: 成功")
+                logger.debug("DingTalk push: success")
             return ok
         except Exception as e:
-            logger.error(f"钉钉推送失败 (重试耗尽): {e}")
+            logger.error(f"DingTalk push failed (retries exhausted): {e}")
             return False
 
     # ---- NotificationLog ----
@@ -201,8 +240,8 @@ class WebhookNotifier:
                 sent_at=datetime.now(),
             )
             mysql_client.insert_or_update(log)
-        except Exception:
-            pass  # 通知日志写入失败不影响主流程
+        except Exception as e:
+            logger.debug(f"NotificationLog write failed: {e}")
 
 
 # 全局单例

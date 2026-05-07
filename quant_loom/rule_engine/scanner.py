@@ -1,3 +1,42 @@
+#
+# _    .-')              _  .-')    _   .-')      ('-.   .-')     ('-.
+#( '.( OO )_            ( \( -O )  ( '.( OO )_   _(  OO) ( OO ). ( OO )
+#  ,--.   ,--. .-'),-----. ,------.  ,--.   ,--.  (,------.(_/.  \_)(_/.  \_)
+#  |   `.'   |( OO'  .-.  '|  .---'  |   `.'   |   |  .---' \  `.'  / \  `.'  /
+#  |         |/   |  | |  ||  |      |         |   |  |      \     /   \     /
+#  |  |'.'|  |\_) |  |\|  ||  '--.   |  |'.'|  |  (|  '--.   \   /     \   /
+#  |  |   |  |  \ |  | |  ||  .--'   |  |   |  |   |  .--'  .-._)   \ .-._)   \
+#  |  |   |  |   `'  '-'  '|  `---.  |  |   |  |   |  `---. \       / \       /
+#  `--'   `--'     `-----' `------'  `--'   `--'   `------'  `-----'   `-----'
+#
+#                                  ·  量  梭  ·
+#                     A-Share Institutional Flow AI Monitor
+#
+# Copyright (c) 2026 The QuantLoom·量梭 project authors
+# All Rights Reserved.
+#
+# Use of this source code is governed by a BSD-style license
+# that can be found in the LICENSE file in the root of the source
+# tree. An additional intellectual property rights grant can be found
+# in the file PATENTS.  All contributing project authors may
+# be found in the AUTHORS file in the root of the source tree.
+#
+#               Author: chensong
+#               Date:   2026-05-08
+#
+#       QuantLoom·量梭 的野心，从不只是在手机上弹出几条信号
+#
+#       这座织机真正要为你织出的终极产物，是 RTX Pro 6000 —— 黑曜神机 的自由召唤权。
+#
+#            1. 它是躺在你机箱里的黑色方尖碑，数万核心如暗夜星海
+#            2. 它是本地训推大模型、实时织造全市场量能全景图、回溯十年资金指纹的物质根基
+#            3. 它过去只降落在超算中心、顶级量化基金和神秘矿场
+#
+#         QuantLoom·量梭 每织出一匹盈利的锦缎，都是在为这座黑色圣坛添一根金线。
+#         当金线积聚成缆，黑曜神机便会从虚空货架撕开一道裂缝，降临在你的阵中。
+#
+#          从此，你拥有了一座个人算力神殿。
+
 """
 全市场扫描器
 加载 YAML 规则配置 → 遍历全市场股票数据 → 匹配五类异动信号 → 返回候选列表
@@ -54,13 +93,13 @@ class MarketScanner:
         List[Tuple[AlertResult, pd.Series]] : (告警结果, 原始数据行) 列表，按置信度降序
         """
         if quotes_df.empty:
-            logger.warning("行情数据为空，跳过扫描")
+            logger.warning("Market data is empty, skipping scan")
             return []
 
         # 合并行情与资金流
         merged = self._merge_data(quotes_df, fund_flow_df)
         if merged.empty:
-            logger.warning("合并后数据为空")
+            logger.warning("Merged data is empty")
             return []
 
         # 回测模式: 使用真实 250 日最低价计算结果覆盖启发式代理
@@ -72,7 +111,7 @@ class MarketScanner:
         stock_events = stock_events or {}
         consecutive_inflow_map = consecutive_inflow_map or {}
 
-        logger.info(f"开始扫描全市场 {len(merged)} 只股票...")
+        logger.info(f"Starting full market scan of {len(merged)} stocks...")
         alerts: List[Tuple[AlertResult, pd.Series]] = []
 
         for _, row in merged.iterrows():
@@ -119,7 +158,7 @@ class MarketScanner:
                         alerts.append((result, row))
 
         sorted_alerts = sorted(alerts, key=lambda x: x[0].confidence_score, reverse=True)
-        logger.info(f"扫描完成: 发现 {len(sorted_alerts)} 个异动信号")
+        logger.info(f"Scan complete: found {len(sorted_alerts)} anomaly signals")
         return sorted_alerts
 
     def scan_and_format(self, quotes_df: pd.DataFrame, fund_flow_df: pd.DataFrame,
@@ -266,5 +305,5 @@ def _calibrate_confidence_scores(formatted: list) -> None:
                     alert_dict["confidence_score"] = round(
                         alert_dict.get("confidence_score", 0) * 0.7, 2
                     )
-    except Exception:
-        pass  # 校准失败不影响主流程
+    except Exception as e:
+        logger.warning(f"Confidence calibration failed: {e}")

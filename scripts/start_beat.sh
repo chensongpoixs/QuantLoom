@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# QuantLoom Celery Beat 定时调度启动脚本
+# QuantLoom·量梭 Celery Beat 定时调度启动脚本
 # 用法: bash scripts/start_beat.sh
 
 set -euo pipefail

@@ -1,3 +1,42 @@
+#
+# _    .-')              _  .-')    _   .-')      ('-.   .-')     ('-.
+#( '.( OO )_            ( \( -O )  ( '.( OO )_   _(  OO) ( OO ). ( OO )
+#  ,--.   ,--. .-'),-----. ,------.  ,--.   ,--.  (,------.(_/.  \_)(_/.  \_)
+#  |   `.'   |( OO'  .-.  '|  .---'  |   `.'   |   |  .---' \  `.'  / \  `.'  /
+#  |         |/   |  | |  ||  |      |         |   |  |      \     /   \     /
+#  |  |'.'|  |\_) |  |\|  ||  '--.   |  |'.'|  |  (|  '--.   \   /     \   /
+#  |  |   |  |  \ |  | |  ||  .--'   |  |   |  |   |  .--'  .-._)   \ .-._)   \
+#  |  |   |  |   `'  '-'  '|  `---.  |  |   |  |   |  `---. \       / \       /
+#  `--'   `--'     `-----' `------'  `--'   `--'   `------'  `-----'   `-----'
+#
+#                                  ·  量  梭  ·
+#                     A-Share Institutional Flow AI Monitor
+#
+# Copyright (c) 2026 The QuantLoom·量梭 project authors
+# All Rights Reserved.
+#
+# Use of this source code is governed by a BSD-style license
+# that can be found in the LICENSE file in the root of the source
+# tree. An additional intellectual property rights grant can be found
+# in the file PATENTS.  All contributing project authors may
+# be found in the AUTHORS file in the root of the source tree.
+#
+#               Author: chensong
+#               Date:   2026-05-08
+#
+#       QuantLoom·量梭 的野心，从不只是在手机上弹出几条信号
+#
+#       这座织机真正要为你织出的终极产物，是 RTX Pro 6000 —— 黑曜神机 的自由召唤权。
+#
+#            1. 它是躺在你机箱里的黑色方尖碑，数万核心如暗夜星海
+#            2. 它是本地训推大模型、实时织造全市场量能全景图、回溯十年资金指纹的物质根基
+#            3. 它过去只降落在超算中心、顶级量化基金和神秘矿场
+#
+#         QuantLoom·量梭 每织出一匹盈利的锦缎，都是在为这座黑色圣坛添一根金线。
+#         当金线积聚成缆，黑曜神机便会从虚空货架撕开一道裂缝，降临在你的阵中。
+#
+#          从此，你拥有了一座个人算力神殿。
+
 """
 邮件通知模块
 发送 HTML 格式的异动告警日报
@@ -29,21 +68,21 @@ _HTML_TEMPLATE = """<!DOCTYPE html>
   .footer {{ margin-top: 20px; color: #999; font-size: 12px; }}
 </style></head>
 <body>
-<h2>QuantLoom 异动日报</h2>
-<p>生成时间: {report_time}</p>
-<p>今日异动总数: <strong>{total_alerts}</strong> (P1: {p1_count}, P2: {p2_count}, P3: {p3_count})</p>
+<h2>QuantLoom·量梭 Daily Flow Alert Report</h2>
+<p>Generated at: {report_time}</p>
+<p>Total alerts today: <strong>{total_alerts}</strong> (P1: {p1_count}, P2: {p2_count}, P3: {p3_count})</p>
 
-<h3>Top 异动标的</h3>
+<h3>Top Alert Stocks</h3>
 <table>
-<tr><th>股票</th><th>类型</th><th>触发原因</th><th>置信度</th><th>风险</th></tr>
+<tr><th>Stock</th><th>Type</th><th>Trigger Reason</th><th>Confidence</th><th>Risk</th></tr>
 {table_rows}
 </table>
 
-<h3>风险提示</h3>
-<p>本报告仅供研究参考，不构成投资建议。所有信号基于公开数据与规则引擎自动生成，可能存在误报或滞后。</p>
+<h3>Risk Disclaimer</h3>
+<p>This report is for research reference only and does not constitute investment advice. All signals are generated automatically from public data and rule engine, and may contain false positives or delays.</p>
 
 <div class="footer">
-<p>QuantLoom · 免责声明: 系统输出仅供研究信息参考</p>
+<p>QuantLoom·量梭 · Disclaimer: System output is for research reference only</p>
 </div>
 </body>
 </html>"""
@@ -85,10 +124,10 @@ class EmailSender:
     def send_daily_report(self, alerts: List[dict]) -> bool:
         """发送日报邮件"""
         if not self.enabled:
-            logger.warning("邮件未配置，跳过发送")
+            logger.warning("Email not configured, skipping send")
             return False
         if not alerts:
-            logger.info("无告警，跳过日报发送")
+            logger.info("No alerts, skipping daily report send")
             return False
 
         p1 = sum(1 for a in alerts if a.get("risk_level") == "P1")
@@ -118,19 +157,19 @@ class EmailSender:
 
         try:
             msg = MIMEMultipart("alternative")
-            msg["Subject"] = f"[QuantLoom] 异动日报 {datetime.now().strftime('%Y-%m-%d')}"
+            msg["Subject"] = f"[QuantLoom·量梭] Daily Flow Alert Report {datetime.now().strftime('%Y-%m-%d')}"
             msg["From"] = self.from_addr
             msg["To"] = self.to_addr
             msg.attach(MIMEText(html, "html", "utf-8"))
 
             self._smtp_send(msg)
 
-            logger.info(f"日报已发送: {len(alerts)} 条告警 -> {self.to_addr}")
+            logger.info(f"Daily report sent: {len(alerts)} alerts -> {self.to_addr}")
             # 批量写入 NotificationLog
             self._log_email_notifications(alerts, success=True)
             return True
         except Exception as e:
-            logger.error(f"邮件发送失败: {e}")
+            logger.error(f"Email send failed: {e}")
             self._log_email_notifications(alerts, success=False, error=str(e))
             return False
 
@@ -157,10 +196,10 @@ class EmailSender:
                 )
                 try:
                     mysql_client.insert_or_update(log)
-                except Exception:
-                    pass  # 单条日志失败不影响其他
-        except Exception:
-            pass  # 通知日志写入失败不影响主流程
+                except Exception as e:
+                    logger.debug(f"NotificationLog single write failed: {e}")
+        except Exception as e:
+            logger.debug(f"NotificationLog batch write failed: {e}")
 
 
 # 全局单例

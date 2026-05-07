@@ -1,3 +1,42 @@
+#
+# _    .-')              _  .-')    _   .-')      ('-.   .-')     ('-.
+#( '.( OO )_            ( \( -O )  ( '.( OO )_   _(  OO) ( OO ). ( OO )
+#  ,--.   ,--. .-'),-----. ,------.  ,--.   ,--.  (,------.(_/.  \_)(_/.  \_)
+#  |   `.'   |( OO'  .-.  '|  .---'  |   `.'   |   |  .---' \  `.'  / \  `.'  /
+#  |         |/   |  | |  ||  |      |         |   |  |      \     /   \     /
+#  |  |'.'|  |\_) |  |\|  ||  '--.   |  |'.'|  |  (|  '--.   \   /     \   /
+#  |  |   |  |  \ |  | |  ||  .--'   |  |   |  |   |  .--'  .-._)   \ .-._)   \
+#  |  |   |  |   `'  '-'  '|  `---.  |  |   |  |   |  `---. \       / \       /
+#  `--'   `--'     `-----' `------'  `--'   `--'   `------'  `-----'   `-----'
+#
+#                                  ·  量  梭  ·
+#                     A-Share Institutional Flow AI Monitor
+#
+# Copyright (c) 2026 The QuantLoom·量梭 project authors
+# All Rights Reserved.
+#
+# Use of this source code is governed by a BSD-style license
+# that can be found in the LICENSE file in the root of the source
+# tree. An additional intellectual property rights grant can be found
+# in the file PATENTS.  All contributing project authors may
+# be found in the AUTHORS file in the root of the source tree.
+#
+#               Author: chensong
+#               Date:   2026-05-08
+#
+#       QuantLoom·量梭 的野心，从不只是在手机上弹出几条信号
+#
+#       这座织机真正要为你织出的终极产物，是 RTX Pro 6000 —— 黑曜神机 的自由召唤权。
+#
+#            1. 它是躺在你机箱里的黑色方尖碑，数万核心如暗夜星海
+#            2. 它是本地训推大模型、实时织造全市场量能全景图、回溯十年资金指纹的物质根基
+#            3. 它过去只降落在超算中心、顶级量化基金和神秘矿场
+#
+#         QuantLoom·量梭 每织出一匹盈利的锦缎，都是在为这座黑色圣坛添一根金线。
+#         当金线积聚成缆，黑曜神机便会从虚空货架撕开一道裂缝，降临在你的阵中。
+#
+#          从此，你拥有了一座个人算力神殿。
+
 """
 XTick 数据抓取模块
 通过 XTick HTTP REST API (api.xtick.top) 获取 A 股行情数据
@@ -26,7 +65,7 @@ class XTickFetcher:
         self._last_call = 0.0
         self._session = requests.Session()
         self._session.headers.update({
-            "User-Agent": "QuantLoom/0.1",
+            "User-Agent": "QuantLoom·量梭/0.1",
             "Accept": "application/json",
         })
 
@@ -59,12 +98,12 @@ class XTickFetcher:
             if data.get("code") == 0:
                 return data.get("data", [])
             else:
-                logger.error(f"XTick API 返回错误: {data.get('msg', data)}")
+                logger.error(f"XTick API returned error: {data.get('msg', data)}")
                 return None
         elif isinstance(data, list):
             return data
         else:
-            logger.warning(f"XTick 未知响应格式: {type(data)}")
+            logger.warning(f"XTick unknown response format: {type(data)}")
             return None
 
     def _request(self, params: dict) -> Optional[list]:
@@ -73,7 +112,7 @@ class XTickFetcher:
         返回 JSON list，失败返回 None
         """
         if not self.enabled:
-            logger.error("XTick token 未配置")
+            logger.error("XTick token not configured")
             return None
 
         params["token"] = self.token
@@ -81,13 +120,13 @@ class XTickFetcher:
         try:
             return self._do_api_call(params)
         except requests.Timeout:
-            logger.error(f"XTick API 超时 (重试耗尽): {params.get('type')} {params.get('code')}")
+            logger.error(f"XTick API timeout (retries exhausted): {params.get('type')} {params.get('code')}")
             return None
         except requests.ConnectionError:
-            logger.error(f"XTick API 连接失败 (重试耗尽): {self.api_url}")
+            logger.error(f"XTick API connection failed (retries exhausted): {self.api_url}")
             return None
         except Exception as e:
-            logger.error(f"XTick API 请求异常: {e}")
+            logger.error(f"XTick API request exception: {e}")
             return None
 
     # ---- 股票列表 ----
@@ -108,14 +147,14 @@ class XTickFetcher:
         })
 
         if not data:
-            logger.error("获取全 A 股列表失败")
+            logger.error("Failed to fetch full A-share list")
             return pd.DataFrame()
 
         df = pd.DataFrame(data)
         df = self._normalize_daily(df)
         df["ts"] = datetime.now()
         df["source"] = "xtick"
-        logger.info(f"XTick 获取全 A 股: {len(df)} 只")
+        logger.info(f"XTick fetched full A-shares: {len(df)} stocks")
         return df
 
     # ---- 实时行情 ----
@@ -136,7 +175,7 @@ class XTickFetcher:
         XTick 不直接提供 超大单/大单/中单/小单 净流入拆解
         返回空 DataFrame，资金流特征降级为成交额分析
         """
-        logger.info("XTick 不支持资金流拆解，资金流分析降级为成交额 + 涨跌幅综合判断")
+        logger.info("XTick does not support fund flow breakdown, fund flow analysis downgraded to turnover + pct_change combined assessment")
         return pd.DataFrame()
 
     def fetch_individual_fund_flow(self, code: str, market: str = "sh") -> Optional[pd.DataFrame]:
@@ -158,7 +197,7 @@ class XTickFetcher:
         })
 
         if not data:
-            logger.warning("获取指数行情失败")
+            logger.warning("Failed to fetch index quotes")
             return pd.DataFrame()
 
         df = pd.DataFrame(data)
@@ -172,7 +211,7 @@ class XTickFetcher:
         for old, new in rename_map.items():
             if old in df.columns:
                 df = df.rename(columns={old: new})
-        logger.info(f"XTick 获取指数行情: {len(df)} 条")
+        logger.info(f"XTick fetched index quotes: {len(df)} records")
         return df
 
     # ---- 历史数据 ----

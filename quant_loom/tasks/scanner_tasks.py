@@ -1,3 +1,42 @@
+#
+# _    .-')              _  .-')    _   .-')      ('-.   .-')     ('-.
+#( '.( OO )_            ( \( -O )  ( '.( OO )_   _(  OO) ( OO ). ( OO )
+#  ,--.   ,--. .-'),-----. ,------.  ,--.   ,--.  (,------.(_/.  \_)(_/.  \_)
+#  |   `.'   |( OO'  .-.  '|  .---'  |   `.'   |   |  .---' \  `.'  / \  `.'  /
+#  |         |/   |  | |  ||  |      |         |   |  |      \     /   \     /
+#  |  |'.'|  |\_) |  |\|  ||  '--.   |  |'.'|  |  (|  '--.   \   /     \   /
+#  |  |   |  |  \ |  | |  ||  .--'   |  |   |  |   |  .--'  .-._)   \ .-._)   \
+#  |  |   |  |   `'  '-'  '|  `---.  |  |   |  |   |  `---. \       / \       /
+#  `--'   `--'     `-----' `------'  `--'   `--'   `------'  `-----'   `-----'
+#
+#                                  ·  量  梭  ·
+#                     A-Share Institutional Flow AI Monitor
+#
+# Copyright (c) 2026 The QuantLoom·量梭 project authors
+# All Rights Reserved.
+#
+# Use of this source code is governed by a BSD-style license
+# that can be found in the LICENSE file in the root of the source
+# tree. An additional intellectual property rights grant can be found
+# in the file PATENTS.  All contributing project authors may
+# be found in the AUTHORS file in the root of the source tree.
+#
+#               Author: chensong
+#               Date:   2026-05-08
+#
+#       QuantLoom·量梭 的野心，从不只是在手机上弹出几条信号
+#
+#       这座织机真正要为你织出的终极产物，是 RTX Pro 6000 —— 黑曜神机 的自由召唤权。
+#
+#            1. 它是躺在你机箱里的黑色方尖碑，数万核心如暗夜星海
+#            2. 它是本地训推大模型、实时织造全市场量能全景图、回溯十年资金指纹的物质根基
+#            3. 它过去只降落在超算中心、顶级量化基金和神秘矿场
+#
+#         QuantLoom·量梭 每织出一匹盈利的锦缎，都是在为这座黑色圣坛添一根金线。
+#         当金线积聚成缆，黑曜神机便会从虚空货架撕开一道裂缝，降临在你的阵中。
+#
+#          从此，你拥有了一座个人算力神殿。
+
 """
 扫描任务 — Celery task 定义
 
@@ -24,12 +63,12 @@ def scan_task(self):
     Celery 自动重试 (max 2次)，60s 间隔。
     扫描本身幂等 — 去重机制防止同一天内重复告警。
     """
-    logger.info(f"=== Celery scan_task 触发 === request_id={self.request.id}")
+    logger.info(f"=== Celery scan_task triggered === request_id={self.request.id}")
     try:
         from scripts.run_scanner import main
         main(dry_run=False, top_n=10, skip_events=False)
     except Exception as e:
-        logger.error(f"scan_task 执行异常: {e}")
+        logger.error(f"scan_task execution error: {e}")
         raise  # 重新抛出以触发 Celery retry
 
 
@@ -46,7 +85,7 @@ def closing_report_task(self):
     执行全量扫描 + AI 分析 top 20 + 发送邮件日报。
     如果当天没有交易数据 (如节假日)，空结果即为正常输出。
     """
-    logger.info(f"=== Celery closing_report_task 触发 === request_id={self.request.id}")
+    logger.info(f"=== Celery closing_report_task triggered === request_id={self.request.id}")
     try:
         from scripts.run_scanner import main
         from quant_loom.storage.mysql_client import mysql_client
@@ -61,7 +100,7 @@ def closing_report_task(self):
             today_alerts_raw = mysql_client.query_alerts(limit=50)
             email_sender.send_daily_report([_alert_to_dict(a) for a in today_alerts_raw])
     except Exception as e:
-        logger.error(f"closing_report_task 执行异常: {e}")
+        logger.error(f"closing_report_task execution error: {e}")
         raise
 
 
@@ -93,9 +132,9 @@ def backfill_outcomes_task(self):
     from quant_loom.storage.mysql_client import mysql_client
     from quant_loom.storage.models import StockAlert, AlertFeedback, BacktestResult
 
-    logger.info(f"=== Celery backfill_outcomes_task 触发 === request_id={self.request.id}")
+    logger.info(f"=== Celery backfill_outcomes_task triggered === request_id={self.request.id}")
     if not mysql_client.ping():
-        logger.warning("MySQL 不可用，跳过结果回填")
+        logger.warning("MySQL unavailable, skipping outcome backfill")
         return
 
     today = date.today()
@@ -148,9 +187,9 @@ def backfill_outcomes_task(self):
                         sess.add(fb)
 
             sess.commit()
-            logger.info(f"结果回填完成: {len(windows)} 个窗口")
+            logger.info(f"Outcome backfill complete: {len(windows)} windows")
     except Exception as e:
-        logger.error(f"backfill_outcomes_task 异常: {e}")
+        logger.error(f"backfill_outcomes_task error: {e}")
         raise
 
 
@@ -169,7 +208,7 @@ def refresh_quality_metrics_task(self):
     from quant_loom.storage.models import AlertFeedback
     from sqlalchemy import func
 
-    logger.info(f"=== Celery refresh_quality_metrics_task 触发 === request_id={self.request.id}")
+    logger.info(f"=== Celery refresh_quality_metrics_task triggered === request_id={self.request.id}")
     if not mysql_client.ping():
         return
 
@@ -198,8 +237,8 @@ def refresh_quality_metrics_task(self):
                 precision = counts.get("correct", 0) / total
                 alert_precision.labels(alert_type="all", window="3d").set(precision)
 
-        logger.info(f"质量指标刷新完成: precision={precision:.4f}" if total > 0 else "质量指标: 无数据")
+        logger.info(f"Quality metrics refreshed: precision={precision:.4f}" if total > 0 else "Quality metrics: no data")
 
     except Exception as e:
-        logger.error(f"refresh_quality_metrics_task 异常: {e}")
+        logger.error(f"refresh_quality_metrics_task error: {e}")
         raise

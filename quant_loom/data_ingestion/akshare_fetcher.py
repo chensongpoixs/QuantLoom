@@ -1,3 +1,42 @@
+#
+# _    .-')              _  .-')    _   .-')      ('-.   .-')     ('-.
+#( '.( OO )_            ( \( -O )  ( '.( OO )_   _(  OO) ( OO ). ( OO )
+#  ,--.   ,--. .-'),-----. ,------.  ,--.   ,--.  (,------.(_/.  \_)(_/.  \_)
+#  |   `.'   |( OO'  .-.  '|  .---'  |   `.'   |   |  .---' \  `.'  / \  `.'  /
+#  |         |/   |  | |  ||  |      |         |   |  |      \     /   \     /
+#  |  |'.'|  |\_) |  |\|  ||  '--.   |  |'.'|  |  (|  '--.   \   /     \   /
+#  |  |   |  |  \ |  | |  ||  .--'   |  |   |  |   |  .--'  .-._)   \ .-._)   \
+#  |  |   |  |   `'  '-'  '|  `---.  |  |   |  |   |  `---. \       / \       /
+#  `--'   `--'     `-----' `------'  `--'   `--'   `------'  `-----'   `-----'
+#
+#                                  ·  量  梭  ·
+#                     A-Share Institutional Flow AI Monitor
+#
+# Copyright (c) 2026 The QuantLoom·量梭 project authors
+# All Rights Reserved.
+#
+# Use of this source code is governed by a BSD-style license
+# that can be found in the LICENSE file in the root of the source
+# tree. An additional intellectual property rights grant can be found
+# in the file PATENTS.  All contributing project authors may
+# be found in the AUTHORS file in the root of the source tree.
+#
+#               Author: chensong
+#               Date:   2026-05-08
+#
+#       QuantLoom·量梭 的野心，从不只是在手机上弹出几条信号
+#
+#       这座织机真正要为你织出的终极产物，是 RTX Pro 6000 —— 黑曜神机 的自由召唤权。
+#
+#            1. 它是躺在你机箱里的黑色方尖碑，数万核心如暗夜星海
+#            2. 它是本地训推大模型、实时织造全市场量能全景图、回溯十年资金指纹的物质根基
+#            3. 它过去只降落在超算中心、顶级量化基金和神秘矿场
+#
+#         QuantLoom·量梭 每织出一匹盈利的锦缎，都是在为这座黑色圣坛添一根金线。
+#         当金线积聚成缆，黑曜神机便会从虚空货架撕开一道裂缝，降临在你的阵中。
+#
+#          从此，你拥有了一座个人算力神殿。
+
 """
 AkShare 数据抓取模块
 通过东方财富公开 API 获取 A 股行情、资金流等数据
@@ -44,10 +83,10 @@ class AkshareFetcher:
 
             df = _do_call()
             df = df.rename(columns={"code": "code", "name": "name"})
-            logger.info(f"AkShare 获取全 A 股列表: {len(df)} 只")
+            logger.info(f"AkShare fetched full A-share list: {len(df)} stocks")
             return df
         except Exception as e:
-            logger.error(f"获取股票列表失败: {e}")
+            logger.error(f"Failed to fetch stock list: {e}")
             return pd.DataFrame()
 
     def fetch_realtime_quotes(self) -> pd.DataFrame:
@@ -73,10 +112,10 @@ class AkshareFetcher:
             })
             df["ts"] = ts
             df["source"] = "akshare"
-            logger.info(f"AkShare 获取实时行情: {len(df)} 条")
+            logger.info(f"AkShare fetched real-time quotes: {len(df)} records")
             return df
         except Exception as e:
-            logger.error(f"获取实时行情失败: {e}")
+            logger.error(f"Failed to fetch real-time quotes: {e}")
             return pd.DataFrame()
 
     # ---- 资金流 ----
@@ -106,10 +145,10 @@ class AkshareFetcher:
             })
             df["ts"] = ts
             df["source"] = "akshare"
-            logger.info(f"AkShare 获取资金流排名: {len(df)} 条")
+            logger.info(f"AkShare fetched fund flow ranking: {len(df)} records")
             return df
         except Exception as e:
-            logger.error(f"获取资金流排名失败: {e}")
+            logger.error(f"Failed to fetch fund flow ranking: {e}")
             return pd.DataFrame()
 
     def fetch_individual_fund_flow(self, code: str, market: str = "sh") -> Optional[pd.DataFrame]:
@@ -123,10 +162,10 @@ class AkshareFetcher:
                 return ak.stock_individual_fund_flow(stock=code, market=market)
 
             df = _do_call()
-            logger.debug(f"获取个股资金流: {code}")
+            logger.debug(f"Fetched individual stock fund flow: {code}")
             return df
         except Exception as e:
-            logger.warning(f"获取个股资金流失败 {code}: {e}")
+            logger.warning(f"Failed to fetch individual fund flow for {code}: {e}")
             return None
 
     # ---- 板块 ----
@@ -147,10 +186,10 @@ class AkshareFetcher:
                 "涨跌幅": "pct_change",
                 "主力净流入": "main_net_inflow",
             })
-            logger.info(f"AkShare 获取板块行情: {len(df)} 条")
+            logger.info(f"AkShare fetched sector quotes: {len(df)} records")
             return df
         except Exception as e:
-            logger.error(f"获取板块行情失败: {e}")
+            logger.error(f"Failed to fetch sector quotes: {e}")
             return pd.DataFrame()
 
     # ---- 历史数据 ----
@@ -170,7 +209,7 @@ class AkshareFetcher:
                 df = df.tail(days)
             return df
         except Exception as e:
-            logger.warning(f"获取历史K线失败 {code}: {e}")
+            logger.warning(f"Failed to fetch historical K-line for {code}: {e}")
             return None
 
     def is_trading_time(self) -> bool:
