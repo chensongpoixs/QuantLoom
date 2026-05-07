@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     openai_base_url: str = ""
     openai_model: str = "gpt-4o-mini"
     anthropic_api_key: str = ""
+    anthropic_model: str = "claude-sonnet-4-6"
 
     # --- llama.cpp (OpenAI 兼容 HTTP API) ---
     llama_base_url: str = ""      # e.g. http://localhost:8080/v1

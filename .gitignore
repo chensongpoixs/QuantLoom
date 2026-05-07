@@ -1,11 +1,17 @@
-/.pytest_cache
-/quant_loom/__pycache__
-/quant_loom/data_ingestion/__pycache__
-/quant_loom/rule_engine/__pycache__
-/quant_loom/storage/__pycache__
-/config/__pycache__
-/tests/__pycache__
-/.env
-/quant_loom/feature_engineering/__pycache__
-/quant_loom/ai_analyzer/__pycache__
-/quant_loom/notification/__pycache__
+# 环境变量 (含密钥)
+.env
+
+# Python
+__pycache__/
+*.pyc
+
+# 日志
+logs/
+
+# IDE
+.vscode/
+.idea/
+
+# 测试
+.pytest_cache/
+

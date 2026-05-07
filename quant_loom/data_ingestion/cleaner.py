@@ -31,13 +31,16 @@ class DataCleaner:
         initial = len(df)
         dropped_logs = []
 
+        # 0. 确保操作独立副本，避免 SettingWithCopyWarning
+        df = df.copy()
+
         # 1. 过滤无价格的记录（停牌/未上市）
         if "latest" in df.columns:
             mask = df["latest"].notna() & (df["latest"] > 0)
             n = (~mask).sum()
             if n:
                 dropped_logs.append(f"无有效价格: {n}")
-            df = df[mask]
+            df = df.loc[mask]
 
         # 2. 填充关键字段空值（必须在数值过滤之前）
         fill_map = {
@@ -56,7 +59,7 @@ class DataCleaner:
             n = (~mask).sum()
             if n:
                 dropped_logs.append(f"涨跌停/异常涨跌幅: {n}")
-            df = df[mask]
+            df = df.loc[mask]
 
         # 4. 过滤极端成交额
         if "turnover_amount" in df.columns:
@@ -64,7 +67,7 @@ class DataCleaner:
             n = (~mask).sum()
             if n:
                 dropped_logs.append(f"异常成交额: {n}")
-            df = df[mask]
+            df = df.loc[mask]
 
         final = len(df)
         if initial - final > 0:
@@ -81,6 +84,8 @@ class DataCleaner:
         """
         if df.empty:
             return df
+
+        df = df.copy()
 
         # 资金流字段填充 0
         flow_cols = ["super_large_net_inflow", "large_net_inflow",

@@ -60,7 +60,9 @@ class MarketScanner:
                 alerts.append((result, row))
 
             # 2. 底部吸筹
-            result = self.engine.check_accumulation(row, consecutive_inflow_days=0)
+            net_inflow = float(row.get("net_inflow", 0) or 0)
+            inflow_days = 1 if net_inflow > 0 else 0  # 原型: 仅根据当日净流入判断
+            result = self.engine.check_accumulation(row, consecutive_inflow_days=inflow_days)
             if result.matched:
                 result.details["code"] = row.get("code", "")
                 alerts.append((result, row))
@@ -158,6 +160,19 @@ class MarketScanner:
             to = pd.to_numeric(merged["turnover_amount"], errors="coerce").fillna(0)
             # 成交额排名百分位 * 20 → 映射到 0-20 区间
             merged["main_force_ratio"] = (to.rank(pct=True) * 20).round(2)
+
+        # --- 计算 near_250d_low (原型阶段使用日内位置 + 跌幅代理) ---
+        # 注：真正的 250 日低位需要历史 K 线数据，Phase 2 实现
+        merged["near_250d_low"] = False
+        if "high" in merged.columns and "low" in merged.columns and "latest" in merged.columns:
+            high = pd.to_numeric(merged["high"], errors="coerce")
+            low = pd.to_numeric(merged["low"], errors="coerce")
+            latest = pd.to_numeric(merged["latest"], errors="coerce")
+            day_range = (high - low).replace(0, float("nan"))
+            position = ((latest - low) / day_range).fillna(0.5)
+            pct = pd.to_numeric(merged["pct_change"], errors="coerce").fillna(0)
+            # 日内价格处于下半区 + 跌幅 > 2% → 可能在低位区域吸筹
+            merged["near_250d_low"] = (position < 0.3) & (pct < -2.0)
 
         return merged
 

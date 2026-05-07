@@ -100,7 +100,7 @@ class TestAccumulation:
             "near_250d_low": True,
             "main_force_ratio": 15.0,
         })
-        result = engine.check_accumulation(row, consecutive_inflow_days=1)
+        result = engine.check_accumulation(row, consecutive_inflow_days=0)
         assert result.matched is False
 
 

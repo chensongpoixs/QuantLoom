@@ -69,12 +69,19 @@ core/
 
 - **AI-WhaleWatcher**: Working prototype with full pipeline (fetch → clean → scan → AI analyze → store → notify)
 - **System 2** (AI Coding Runtime): Design-only, in `docs/doc.md`
-- 33 unit tests covering rules, cleaner, dedup — all passing (`pytest tests/ -v`)
+- **71 unit tests** covering rules, cleaner, dedup, fund_flow, price, scanner — all passing (`pytest tests/ -v`)
+- **Test files**: `test_rule_engine.py` (18), `test_cleaner.py` (9), `test_dedup.py` (6), `test_fund_flow.py` (13), `test_price.py` (14), `test_scanner.py` (9)
 - Key limitations of current prototype:
-  - XTick provides no fund flow data (uses turnover percentile as proxy)
+  - XTick provides no fund flow data → `main_force_ratio` proxied by turnover percentile (0-20 range)
+  - `near_250d_low` proxied by intraday range position + pct_change (no 250-day history)
+  - `consecutive_inflow_days` only detects today's inflow (no historical lookback)
   - AkShare provides fund flow + stock names but may be network-restricted
   - No event/news ingestion yet (Phase 2)
   - No Celery task scheduling yet (uses direct function calls)
+- Redis gracefully degrades — all `redis_client` methods check `self.client is not None`
+- AI analysis gracefully degrades — `_fallback_result()` returns rule-only output when LLM unavailable
+- Accumulation rule: `rules.yaml` sets `consecutive_inflow_days_min: 1` for prototype (will raise to 3 with historical data)
+- `ANTHROPIC_MODEL` env var controls Anthropic model selection (default: `claude-sonnet-4-6`)
 
 ### Quick Start (AI-WhaleWatcher)
 

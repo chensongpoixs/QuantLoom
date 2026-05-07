@@ -91,9 +91,12 @@ quant_loom/
 │   ├── init_db.py               # 建表脚本
 │   └── run_scanner.py           # 一键运行入口
 ├── tests/
-│   ├── test_rule_engine.py
-│   ├── test_cleaner.py
-│   └── test_dedup.py
+│   ├── test_rule_engine.py       # 规则引擎 (18 tests)
+│   ├── test_cleaner.py           # 数据清洗 (9 tests)
+│   ├── test_dedup.py             # 告警去重 (6 tests)
+│   ├── test_fund_flow.py         # 资金流特征 (13 tests)
+│   ├── test_price.py             # 价格特征 (14 tests)
+│   └── test_scanner.py           # 全市场扫描器 (9 tests)
 ├── requirements.txt
 ├── .env.example
 └── README.md
@@ -145,6 +148,10 @@ mysql -u root -p < scripts/init_db.sql
 # 执行完整流程：抓取 → 清洗 → 扫描 → AI分析 → 入库 → 通知
 python scripts/run_scanner.py
 
+# 控制 AI 分析数量
+python scripts/run_scanner.py --top 20     # AI 分析 top 20
+python scripts/run_scanner.py --top 0      # 跳过 AI 分析
+
 # 仅扫描不写库（测试用）
 python scripts/run_scanner.py --dry-run
 ```
@@ -152,7 +159,7 @@ python scripts/run_scanner.py --dry-run
 ### 5. 运行测试
 
 ```bash
-pytest tests/ -v
+pytest tests/ -v                          # 全部 71 个测试
 
 # 带覆盖率
 pytest tests/ -v --cov=quant_loom --cov-report=term-missing
@@ -171,11 +178,16 @@ scan_rules:
   min_turnover_amount: 100000000        # 最小成交额 1亿
   pct_change_min: 2                     # 最小涨幅 2%
   super_large_inflow_ratio_min: 20      # 超大单净流入占比最低 20%
+  consecutive_inflow_days_min: 1        # 连续净流入天数 (原型阶段=1)
   alert_cooldown_minutes: 30            # 冷却时间
 
   breakout:              # 放量上攻
     enabled: true
     volume_ratio_min: 1.5
+    ...
+  accumulation:           # 底部吸筹
+    enabled: true
+    consecutive_inflow_days_min: 1      # 原型阶段=1，正式阶段≥3
     ...
 ```
 
@@ -228,10 +240,16 @@ scan_rules:
 
 ### 第 1 阶段：原型验证 ✅ (当前)
 
-- [x] 接通行情与资金流数据
-- [x] 完成数据库建模
-- [x] 实现规则扫描器
-- [x] 形成基础告警
+- [x] XTick + AkShare 双数据源可配置切换
+- [x] 行情与资金流数据抓取与清洗
+- [x] MySQL 数据库建模 (5 张核心表)
+- [x] 五类异动规则引擎 (YAML 配置化)
+- [x] 全市场扫描器 (含资金流代理、近低位计算)
+- [x] LLM 结构化归因 (llama.cpp / OpenAI / Anthropic 三选一)
+- [x] Redis 告警去重 (可选, 优雅降级)
+- [x] Webhook 实时推送 + 邮件通知
+- [x] 结构化 JSON 日志 (trace_id 贯穿全链路)
+- [x] 71 个单元测试全部通过
 
 ### 第 2 阶段：增强分析
 
@@ -266,7 +284,7 @@ scan_rules:
 | 关系数据库 | MySQL 8.0+ |
 | 缓存/去重 | Redis |
 | 任务队列 | Celery (生产) / APScheduler (原型) |
-| AI | OpenAI / Anthropic (可选) |
+| AI | OpenAI / Anthropic / llama.cpp (三选一，优先级: llama > openai > anthropic) |
 | 配置 | YAML + pydantic-settings |
 | 日志 | loguru (JSON 结构化) |
 | 测试 | pytest |
@@ -275,9 +293,20 @@ scan_rules:
 
 ## 运维与可观测性
 
-- **结构化日志**：JSON 格式，每告警带 trace_id
+- **结构化日志**：JSON 格式，每次扫描带 trace_id
+- **Redis 优雅降级**：Redis 不可用时自动跳过去重/缓存，不影响核心流程
+- **AI 可选**：未配置 LLM 密钥时跳过 AI 分析，仅输出规则结果
 - **关键指标**：数据抓取成功率、API 延迟、告警触发数、推送成功率
-- **系统自监控**：数据源不可用、DB/Redis 断连、任务堆积
+
+## 原型阶段已知限制
+
+| 限制 | 说明 | 计划 |
+|------|------|------|
+| XTick 无资金流数据 | 主力净流入用成交额百分位代理 (0-20 区间) | Phase 2 接入更多数据源 |
+| 近 250 日低位为代理值 | 使用日内价格位置 + 跌幅近似判断 | Phase 2 接入历史 K 线 |
+| 连续流入天数仅凭当日 | 无历史资金流回溯，当日净流入 > 0 即计 1 天 | Phase 2 建历史数据表 |
+| 无事件/新闻数据 | 事件驱动规则仅依赖量价特征 | Phase 2 接入公告/新闻 API |
+| 无 Celery 调度 | 直接函数调用，非定时任务 | Phase 3 引入任务队列 |
 
 ---
 

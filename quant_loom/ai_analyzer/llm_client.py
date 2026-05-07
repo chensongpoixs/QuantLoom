@@ -160,7 +160,7 @@ class LLMClient:
             main_force_ratio=alert.get("main_force_ratio", "N/A"),
         )
         resp = client.messages.create(
-            model="claude-sonnet-4-6",
+            model=settings.anthropic_model or "claude-sonnet-4-6",
             max_tokens=500,
             system=ANALYSIS_SYSTEM_PROMPT,
             messages=[{"role": "user", "content": user_msg}],

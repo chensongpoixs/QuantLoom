@@ -9,7 +9,7 @@ scan_rules:
   pct_change_min: 2                     # 最小涨幅 2%
   pct_change_max: 7                     # 最大涨幅 7%
   super_large_inflow_ratio_min: 20      # 超大单净流入占比最低 20%
-  consecutive_inflow_days_min: 3        # 连续净流入最低天数
+  consecutive_inflow_days_min: 1        # 连续净流入最低天数 (原型阶段=1)
   tail_chasing_start_time: "14:30"      # 尾盘抢筹开始时间
   alert_cooldown_minutes: 30            # 同标的同原因冷却时间（分钟）
 
@@ -28,7 +28,7 @@ scan_rules:
   accumulation:
     enabled: true
     near_250d_low_pct: 15                # 距离 250 日最低价 < 15%
-    consecutive_inflow_days_min: 3       # 连续净流入天数
+    consecutive_inflow_days_min: 1       # 连续净流入天数 (原型阶段=1, 正式阶段>=3)
     avg_inflow_ratio_min: 10             # 平均净流入占比 > 10%
 
   # 3. 尾盘抢筹型
