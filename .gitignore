@@ -1,0 +1,7 @@
+/.pytest_cache
+/quant_loom/__pycache__
+/quant_loom/data_ingestion/__pycache__
+/quant_loom/rule_engine/__pycache__
+/quant_loom/storage/__pycache__
+/config/__pycache__
+/tests/__pycache__

@@ -10,9 +10,10 @@ This is a design/planning-phase repository containing architectural blueprints f
 
 A-share (Chinese stock market) institutional capital flow anomaly detection and early warning system. Full-market coverage (5000+ stocks) with multi-source fusion of fund flow, price action, news sentiment, and research reports.
 
-- **Language**: Python 3.11
+- **Language**: Python 3.12
+- **Environment**: Conda environment `quant_loom` — create with `conda create -n quant_loom python=3.12` and activate with `conda activate quant_loom`
 - **Data sources**: AkShare / Tushare
-- **Storage**: PostgreSQL (business data), Redis (caching/dedup), optional ClickHouse/TimescaleDB for high-throughput time-series
+- **Storage**: MySQL (business data), Redis (caching/dedup), optional ClickHouse for high-throughput time-series
 - **Task scheduling**: APScheduler (prototype) → Celery + Redis/RabbitMQ (production)
 - **AI integration**: LLM APIs (GPT/DeepSeek/Claude) for structured JSON attribution; RAG via pgvector/Milvus/Elasticsearch for document retrieval
 
@@ -66,7 +67,17 @@ core/
 
 ## Current State
 
-- Zero commits on `master`; no source code exists
+- AI-WhaleWatcher (System 1) has a working prototype implementation; System 2 remains design-only
 - Two untracked design documents in `docs/`: `doc.md`, `quant_loom.md`
 - Implementation work should begin by referring to the detailed specs in these documents
-- No build system, test framework, or CI/CD has been configured
+
+### Quick Start (AI-WhaleWatcher)
+
+```bash
+cd quant_loom/
+# Install deps: pip install -r requirements.txt
+# Configure: cp .env.example .env && edit .env
+# Init DB: python scripts/init_db.py
+# Run scanner: python scripts/run_scanner.py [--dry-run]
+# Run tests: pytest tests/ -v
+```

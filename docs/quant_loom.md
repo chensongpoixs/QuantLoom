@@ -118,7 +118,7 @@
 
 #### 存储
 
-* PostgreSQL：存业务事实表、任务表、策略配置、告警记录。
+* MySQL：存业务事实表、任务表、策略配置、告警记录。
 * Redis：缓存最新快照、热点候选池、去重标记、限流状态。
 * 对于高频时序数据，可增加：
 
@@ -144,6 +144,24 @@
   * pgvector
   * Milvus
   * Elasticsearch 向量检索
+
+#### 开发环境
+
+* **Python 版本**：3.12
+* **环境管理**：使用 Conda 创建独立环境
+
+```bash
+conda create -n quant_loom python=3.12
+conda activate quant_loom
+```
+
+* **依赖安装**：
+
+```bash
+pip install akshare tushare mysqlclient redis celery apscheduler
+pip install openai anthropic sentence-transformers
+pip install pytest pytest-cov
+```
 
 ---
 
@@ -394,7 +412,7 @@ scan_rules:
 ### 10.1 安全
 
 * API Key 使用 `.env` 或密钥管理系统，不入库。
-* PostgreSQL 账号最小权限原则。
+* MySQL 账号最小权限原则。
 * 生产环境启用 TLS。
 * 日志中禁止打印密钥、Cookie、token。
 
@@ -466,11 +484,11 @@ scan_rules:
 
 ## 13. 更适合直接给 AI 编程工具的“增强版提示词”
 
-> 请基于以下工程要求，设计并实现一个 Python 3.11 的 A 股机构资金异动监控系统核心模块。
+> 请基于以下工程要求，设计并实现一个 Python 3.12 的 A 股机构资金异动监控系统核心模块。
 > 要求：
 >
 > 1. 使用 AkShare 或 Tushare 获取全市场实时行情和资金流数据；
-> 2. 将行情快照、资金流、告警事件存入 PostgreSQL；
+> 2. 将行情快照、资金流、告警事件存入 MySQL；
 > 3. 使用 Redis 作为实时缓存和告警去重；
 > 4. 规则引擎支持配置化阈值，并区分放量上攻、底部吸筹、尾盘抢筹、事件驱动四类信号；
 > 5. 告警触发后调用 AI 模块输出 JSON 结构化结果，包括 summary、reason_type、confidence_score、risk_points、evidence、action；
