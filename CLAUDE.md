@@ -14,11 +14,14 @@ A-share (Chinese stock market) institutional capital flow anomaly detection and 
 - **Environment**: Conda environment `quant_loom` — create with `conda create -n quant_loom python=3.12` and activate with `conda activate quant_loom`
 - **Data sources**: XTick (api.xtick.top) and AkShare (东方财富) — dual-source, configurable via `DATA_SOURCE` env var ("xtick" or "akshare"). XTick requires a token from http://www.xtick.top.
 - **Storage**: MySQL (business data), Redis (caching/dedup — optional, graceful degradation)
-- **Task scheduling**: APScheduler (prototype) → Celery + Redis/RabbitMQ (production)
+- **Task scheduling**: Celery + Redis (Beat 定时调度, Worker 并发执行)
 - **AI integration**: Three LLM providers (priority order: llama.cpp > OpenAI > Anthropic). Structured JSON output for anomaly attribution.
+- **Monitoring**: Prometheus metrics (10 counters/gauges/histograms), FastAPI health endpoints
+- **Notifications**: Email (SMTP), WeCom/Feishu/DingTalk webhooks, NotificationLog audit trail
+- **Resilience**: tenacity-based retry (network: 3 attempts exponential backoff, DB: 2 attempts)
 
 **Architecture**: 7-layer decoupled pipeline:
-1. Collection (XTick/AkShare) → 2. Cleaning → 3. Feature Engineering → 4. Rule Engine → 5. LLM Analysis → 6. Service (alerts, reports, API) → 7. Operations (monitoring, logging)
+1. Collection (XTick/AkShare) → 2. Cleaning → 3. Feature Engineering → 4. Rule Engine → 5. LLM Analysis → 6. Service (alerts, reports, API) → 7. Operations (monitoring, logging, retry)
 
 **Data layering**: ODS (raw) → DWD (cleaned) → DWS (aggregated) → ADS (results)
 
@@ -69,8 +72,8 @@ core/
 
 - **QuantLoom**: Working prototype with full pipeline (fetch → clean → pre-scan → event fetch → historical fund flow → rule scan → AI analyze → store → notify)
 - **System 2** (AI Coding Runtime): Design-only, in `docs/doc.md`
-- **107 unit tests** across 10 test files — all passing (`pytest tests/ -v`)
-- **Test files**: `test_rule_engine.py` (18), `test_cleaner.py` (9), `test_dedup.py` (6), `test_fund_flow.py` (19), `test_price.py` (14), `test_scanner.py` (9), `test_event_fetcher.py` (11), `test_event_matcher.py` (11), `test_rag_store.py` (7), plus misc
+- **160 unit tests** across 16 test files — all passing (`pytest tests/ -v`)
+- **Test files**: `test_rule_engine.py` (18), `test_cleaner.py` (9), `test_dedup.py` (6), `test_fund_flow.py` (19), `test_price.py` (14), `test_scanner.py` (9), `test_event_fetcher.py` (11), `test_event_matcher.py` (11), `test_rag_store.py` (7), `test_retry.py` (13), `test_metrics.py` (5), `test_email.py` (6), `test_webhook.py` (11), `test_api.py` (8), `test_tasks.py` (8)
 - Phase 2 (增强分析) completed:
   - Event/news data ingestion via AkShare (`event_fetcher.py`) — stock news, announcements, research reports
   - Event matching via LLM-as-ranker (`event_matcher.py`) — time filter → keyword pre-filter → LLM relevance scoring
@@ -79,13 +82,18 @@ core/
   - Enhanced AI analysis with real event context in prompts
   - `consecutive_inflow_days_min` restored to 3 in `rules.yaml`
   - Detailed LLM request/response logging (method, URL, headers, full body, tokens, elapsed)
+- Phase 3 (生产化) completed:
+  - **Retry** (`quant_loom/ops/retry.py`): tenacity-based — `@network_retry` (3x, exp backoff 2s→4s→30s) and `@db_retry` (2x, exp backoff 1s→5s). Applied to all fetchers, LLM calls, webhooks, SMTP.
+  - **SMTP fix**: Port 465 → `SMTP_SSL`, Port 587 → `SMTP` + `STARTTLS`
+  - **Celery** (`quant_loom/tasks/`): `celery_app.py` + `scanner_tasks.py` — Beat schedule runs `scan_task` every 5 min + `closing_report_task` at 16:05 weekdays
+  - **DingTalk** (`webhook.py`): Markdown format, P1 @所有人. WeCom/Feishu/DingTalk all with `@network_retry`
+  - **NotificationLog**: All channels (wecom/feishu/dingtalk/email) write to `sq_notification_log` with alert foreign key
+  - **Prometheus** (`quant_loom/ops/metrics.py`): 10 metrics — pipeline runs, duration, alerts, notifications, data fetch, API calls, errors, DB health, retries, build info
+  - **FastAPI** (`quant_loom/api/app.py`): `GET /health`, `/health/ready`, `/health/live`, `/metrics`
+  - **Pipeline instrumentation** (`scripts/run_scanner.py`): data_fetch_duration, alerts_produced, pipeline_duration, pipeline_runs
 - Remaining limitations:
   - XTick provides no fund flow data → `main_force_ratio` proxied by turnover percentile
   - `near_250d_low` proxied by intraday range position + pct_change (no 250-day history)
-  - No Celery task scheduling yet (uses direct function calls)
-- Redis gracefully degrades — all `redis_client` methods check `self.client is not None`
-- AI analysis gracefully degrades — `_fallback_result()` returns rule-only output when LLM unavailable
-- LLM observability: `_log_request()`, `_log_response()`, `_log_completion()` record full request/response body, headers, tokens, and elapsed time
 
 ### Quick Start (QuantLoom)
 
@@ -97,11 +105,29 @@ cp .env.example .env
 # Edit .env — set DATA_SOURCE (xtick/akshare), MySQL/Redis connections, LLM keys
 # Init DB
 python scripts/init_db.py
-# Run scanner (top 10 AI-analyzed by default)
-python scripts/run_scanner.py              # full run
+
+# --- Manual run ---
+python scripts/run_scanner.py              # full run (AI analyze top 10)
 python scripts/run_scanner.py --top 20     # AI analyze top 20
 python scripts/run_scanner.py --top 0      # skip AI analysis
 python scripts/run_scanner.py --dry-run    # scan only, no DB writes
-# Run tests
-pytest tests/ -v
+python scripts/run_scanner.py --skip-events # skip event fetching
+
+# --- Scheduled run (Celery) ---
+celery -A quant_loom.tasks.celery_app worker -l info --concurrency=2 &
+celery -A quant_loom.tasks.celery_app beat -l info &
+# Or via scripts:
+bash scripts/start_worker.sh
+bash scripts/start_beat.sh
+
+# --- API server ---
+uvicorn quant_loom.api.app:app --host 0.0.0.0 --port 9090
+
+# Verify:
+curl localhost:9090/health    # {"status":"ok","checks":{"mysql":"ok","redis":"ok"}}
+curl localhost:9090/metrics   # Prometheus 指标
+
+# --- Tests ---
+pytest tests/ -v              # all tests
+pytest tests/ -v -k "not test_no_duplicates and not test_redis"  # skip Redis
 ```

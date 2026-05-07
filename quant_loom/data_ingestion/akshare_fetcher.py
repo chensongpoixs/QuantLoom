@@ -10,6 +10,8 @@ from typing import Optional
 import pandas as pd
 from loguru import logger
 
+from quant_loom.ops.retry import network_retry
+
 
 class AkshareFetcher:
     """AkShare / 东方财富 数据抓取器"""
@@ -34,8 +36,13 @@ class AkshareFetcher:
         """获取全 A 股列表（含名称）"""
         try:
             import akshare as ak
-            self._throttle()
-            df = ak.stock_info_a_code_name()
+
+            @network_retry
+            def _do_call():
+                self._throttle()
+                return ak.stock_info_a_code_name()
+
+            df = _do_call()
             df = df.rename(columns={"code": "code", "name": "name"})
             logger.info(f"AkShare 获取全 A 股列表: {len(df)} 只")
             return df
@@ -47,9 +54,14 @@ class AkshareFetcher:
         """获取全市场实时行情快照（东方财富）"""
         try:
             import akshare as ak
-            self._throttle()
             ts = datetime.now()
-            df = ak.stock_zh_a_spot_em()
+
+            @network_retry
+            def _do_call():
+                self._throttle()
+                return ak.stock_zh_a_spot_em()
+
+            df = _do_call()
             df = df.rename(columns={
                 "代码": "code",
                 "名称": "name",
@@ -73,9 +85,14 @@ class AkshareFetcher:
         """获取全市场个股资金流排名（东方财富）"""
         try:
             import akshare as ak
-            self._throttle()
             ts = datetime.now()
-            df = ak.stock_individual_fund_flow_rank(indicator="今日")
+
+            @network_retry
+            def _do_call():
+                self._throttle()
+                return ak.stock_individual_fund_flow_rank(indicator="今日")
+
+            df = _do_call()
             df = df.rename(columns={
                 "代码": "code",
                 "名称": "name",
@@ -99,8 +116,13 @@ class AkshareFetcher:
         """获取单只股票历史资金流"""
         try:
             import akshare as ak
-            self._throttle()
-            df = ak.stock_individual_fund_flow(stock=code, market=market)
+
+            @network_retry
+            def _do_call():
+                self._throttle()
+                return ak.stock_individual_fund_flow(stock=code, market=market)
+
+            df = _do_call()
             logger.debug(f"获取个股资金流: {code}")
             return df
         except Exception as e:
@@ -113,8 +135,13 @@ class AkshareFetcher:
         """获取行业板块行情"""
         try:
             import akshare as ak
-            self._throttle()
-            df = ak.stock_board_industry_name_em()
+
+            @network_retry
+            def _do_call():
+                self._throttle()
+                return ak.stock_board_industry_name_em()
+
+            df = _do_call()
             df = df.rename(columns={
                 "板块名称": "sector_name",
                 "涨跌幅": "pct_change",
@@ -132,9 +159,13 @@ class AkshareFetcher:
         """获取单只股票历史 K 线"""
         try:
             import akshare as ak
-            self._throttle()
-            symbol = code
-            df = ak.stock_zh_a_hist(symbol=symbol, period="daily", adjust="qfq")
+
+            @network_retry
+            def _do_call():
+                self._throttle()
+                return ak.stock_zh_a_hist(symbol=code, period="daily", adjust="qfq")
+
+            df = _do_call()
             if df is not None and not df.empty:
                 df = df.tail(days)
             return df

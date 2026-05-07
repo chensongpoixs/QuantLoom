@@ -10,6 +10,8 @@ from typing import Optional
 import pandas as pd
 from loguru import logger
 
+from quant_loom.ops.retry import network_retry
+
 
 class EventFetcher:
     """AkShare 事件数据抓取器 — 新闻/公告/研报"""
@@ -37,8 +39,13 @@ class EventFetcher:
         """
         try:
             import akshare as ak
-            self._throttle()
-            df = ak.stock_news_em(symbol=code)
+
+            @network_retry
+            def _do_call():
+                self._throttle()
+                return ak.stock_news_em(symbol=code)
+
+            df = _do_call()
             if df is None or df.empty:
                 return pd.DataFrame()
             df = df.rename(columns={
@@ -62,8 +69,13 @@ class EventFetcher:
         """
         try:
             import akshare as ak
-            self._throttle()
-            df = ak.stock_notice_report(symbol=code)
+
+            @network_retry
+            def _do_call():
+                self._throttle()
+                return ak.stock_notice_report(symbol=code)
+
+            df = _do_call()
             if df is None or df.empty:
                 return pd.DataFrame()
             # 标准化列名 — AkShare 返回的列名可能因版本而异
@@ -110,8 +122,13 @@ class EventFetcher:
         """
         try:
             import akshare as ak
-            self._throttle()
-            df = ak.stock_research_report_em(symbol=code)
+
+            @network_retry
+            def _do_call():
+                self._throttle()
+                return ak.stock_research_report_em(symbol=code)
+
+            df = _do_call()
             if df is None or df.empty:
                 return pd.DataFrame()
             # 标准化列名
@@ -161,8 +178,13 @@ class EventFetcher:
         """
         try:
             import akshare as ak
-            self._throttle()
-            df = ak.stock_info_global_cls()
+
+            @network_retry
+            def _do_call():
+                self._throttle()
+                return ak.stock_info_global_cls()
+
+            df = _do_call()
             if df is None or df.empty:
                 return pd.DataFrame()
             df["event_type"] = "news"

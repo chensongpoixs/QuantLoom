@@ -20,6 +20,7 @@ from typing import Optional
 from loguru import logger
 
 from config.settings import settings
+from quant_loom.ops.retry import network_retry
 
 
 # LLM 分析 Prompt 模板
@@ -141,6 +142,7 @@ class LLMClient:
 
     # ---- llama.cpp (OpenAI 兼容 HTTP API) ----
 
+    @network_retry
     def _analyze_llama(self, alert: dict, events_context: str = "") -> dict:
         """
         llama.cpp 本地模型分析
@@ -209,6 +211,7 @@ class LLMClient:
 
     # ---- OpenAI ----
 
+    @network_retry
     def _analyze_openai(self, alert: dict, events_context: str = "") -> dict:
         import openai
 
@@ -270,6 +273,7 @@ class LLMClient:
 
     # ---- Anthropic ----
 
+    @network_retry
     def _analyze_anthropic(self, alert: dict, events_context: str = "") -> dict:
         import anthropic
 

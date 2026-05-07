@@ -69,10 +69,12 @@ class MySQLClient:
         Base.metadata.create_all(self.engine)
         logger.info("MySQL 表创建完成")
 
-    def insert_or_update(self, instance) -> None:
-        """插入或更新单条记录"""
+    def insert_or_update(self, instance):
+        """插入或更新单条记录，返回 merged instance (含 auto-increment ID)"""
         with self.get_session() as s:
-            s.merge(instance)
+            merged = s.merge(instance)
+            s.flush()
+            return merged
 
     def bulk_insert(self, instances: list) -> None:
         """批量插入"""

@@ -13,6 +13,7 @@ import requests
 from loguru import logger
 
 from config.settings import settings
+from quant_loom.ops.retry import network_retry
 
 
 class XTickFetcher:
@@ -40,6 +41,32 @@ class XTickFetcher:
             time.sleep(self.rate_limit - elapsed)
         self._last_call = time.time()
 
+    @network_retry
+    def _do_api_call(self, params: dict) -> Optional[list]:
+        """实际 HTTP GET 调用 (带重试)。
+        仅重试 requests 网络层异常；业务层错误 (code != 0) 不重试。
+        """
+        self._throttle()
+        resp = self._session.get(
+            self.api_url,
+            params=params,
+            timeout=(10, 30),  # (connect, read)
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+        if isinstance(data, dict):
+            if data.get("code") == 0:
+                return data.get("data", [])
+            else:
+                logger.error(f"XTick API 返回错误: {data.get('msg', data)}")
+                return None
+        elif isinstance(data, list):
+            return data
+        else:
+            logger.warning(f"XTick 未知响应格式: {type(data)}")
+            return None
+
     def _request(self, params: dict) -> Optional[list]:
         """
         发送 HTTP GET 请求到 XTick API
@@ -50,34 +77,14 @@ class XTickFetcher:
             return None
 
         params["token"] = self.token
-        self._throttle()
 
         try:
-            resp = self._session.get(
-                self.api_url,
-                params=params,
-                timeout=(10, 30),  # (connect, read)
-            )
-            resp.raise_for_status()
-            data = resp.json()
-
-            # XTick 响应可能是 {"code": 0, "data": [...]} 或直接是 list
-            if isinstance(data, dict):
-                if data.get("code") == 0:
-                    return data.get("data", [])
-                else:
-                    logger.error(f"XTick API 返回错误: {data.get('msg', data)}")
-                    return None
-            elif isinstance(data, list):
-                return data
-            else:
-                logger.warning(f"XTick 未知响应格式: {type(data)}")
-                return None
+            return self._do_api_call(params)
         except requests.Timeout:
-            logger.error(f"XTick API 超时: {params.get('type')} {params.get('code')}")
+            logger.error(f"XTick API 超时 (重试耗尽): {params.get('type')} {params.get('code')}")
             return None
         except requests.ConnectionError:
-            logger.error(f"XTick API 连接失败: {self.api_url}")
+            logger.error(f"XTick API 连接失败 (重试耗尽): {self.api_url}")
             return None
         except Exception as e:
             logger.error(f"XTick API 请求异常: {e}")

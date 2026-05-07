@@ -10,6 +10,7 @@
 """
 
 import sys
+import time
 from collections import Counter
 from datetime import datetime, date
 from pathlib import Path
@@ -28,6 +29,12 @@ from quant_loom.notification.webhook import webhook_notifier
 from quant_loom.storage.mysql_client import mysql_client
 from quant_loom.storage.redis_client import redis_client
 from quant_loom.storage.models import StockAlert, StockEvent, FundFlowDaily
+from quant_loom.ops.metrics import (
+    pipeline_runs,
+    pipeline_duration,
+    alerts_produced,
+    data_fetch_duration,
+)
 
 
 def parse_top_n() -> int:
@@ -40,6 +47,7 @@ def parse_top_n() -> int:
 
 def main(dry_run: bool = False, top_n: int = 10, skip_events: bool = False):
     trace_id = datetime.now().strftime("%Y%m%d%H%M%S")
+    pipeline_start = time.time()
     logger.info(f"=== QuantLoom 扫描开始 === trace_id={trace_id}")
 
     # ---- 1. 数据抓取 ----
@@ -52,8 +60,10 @@ def main(dry_run: bool = False, top_n: int = 10, skip_events: bool = False):
         from quant_loom.data_ingestion.xtick_fetcher import fetcher as xtick_fetcher
         fetcher = xtick_fetcher
 
+    t0 = time.time()
     quotes_raw = fetcher.fetch_realtime_quotes()
     fund_flow_raw = fetcher.fetch_fund_flow_rank()
+    data_fetch_duration.labels(source=settings.data_source).observe(time.time() - t0)
 
     if quotes_raw.empty:
         logger.error("行情数据为空，无法继续")
@@ -185,8 +195,13 @@ def main(dry_run: bool = False, top_n: int = 10, skip_events: bool = False):
                 is_sent=False,
             )
             try:
-                mysql_client.insert_or_update(record)
+                merged = mysql_client.insert_or_update(record)
+                alert["db_id"] = merged.id  # 供 NotificationLog 外键关联
                 saved += 1
+                alerts_produced.labels(
+                    risk_level=alert.get("risk_level", "P3"),
+                    alert_type=alert.get("alert_type", ""),
+                ).inc()
             except Exception as e:
                 logger.error(f"入库失败 {alert.get('code')}: {e}")
         logger.info(f"  写入 {saved} 条")
@@ -204,6 +219,8 @@ def main(dry_run: bool = False, top_n: int = 10, skip_events: bool = False):
     # ---- 打印汇总 ----
     print_summary(all_alerts)
 
+    pipeline_duration.observe(time.time() - pipeline_start)
+    pipeline_runs.labels(status="success").inc()
     logger.info(f"=== QuantLoom 扫描完成 === trace_id={trace_id}")
 
 

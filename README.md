@@ -79,17 +79,25 @@ quant_loom/
 │   │   └── llm_client.py        #   LLM 调用 (OpenAI/Anthropic/llama.cpp)
 │   ├── notification/            # 通知层
 │   │   ├── email_sender.py      #   HTML 邮件日报
-│   │   └── webhook.py           #   企业微信/飞书推送
+│   │   └── webhook.py           #   企业微信/飞书/钉钉推送
 │   ├── storage/                 # 存储层
 │   │   ├── models.py            #   ORM 模型 (7表)
 │   │   ├── mysql_client.py      #   MySQL 连接管理
 │   │   └── redis_client.py      #   Redis 缓存/去重
-│   └── ops/                     # 运维层
-│       └── logger.py            #   结构化日志
+│   ├── ops/                     # 运维层
+│   │   ├── retry.py             #   重试策略 (tenacity)
+│   │   └── metrics.py           #   Prometheus 指标 (10)
+│   ├── tasks/                   # Celery 任务
+│   │   ├── celery_app.py        #   Celery 应用 + Beat schedule
+│   │   └── scanner_tasks.py     #   扫描任务定义
+│   └── api/                     # API 层
+│       └── app.py               #   FastAPI 健康检查 + /metrics
 ├── scripts/
 │   ├── init_db.sql              # 建表 DDL (7张表)
 │   ├── init_db.py               # 建表脚本
-│   └── run_scanner.py           # 一键运行入口
+│   ├── run_scanner.py           # 一键运行入口
+│   ├── start_worker.sh          # Celery Worker 启动
+│   └── start_beat.sh            # Celery Beat 启动
 ├── tests/
 │   ├── test_rule_engine.py       # 规则引擎 (18 tests)
 │   ├── test_cleaner.py           # 数据清洗 (9 tests)
@@ -99,7 +107,13 @@ quant_loom/
 │   ├── test_scanner.py           # 全市场扫描器 (9 tests)
 │   ├── test_event_fetcher.py     # 事件抓取 (11 tests)
 │   ├── test_event_matcher.py     # 事件匹配 (11 tests)
-│   └── test_rag_store.py         # RAG 存储 (7 tests)
+│   ├── test_rag_store.py         # RAG 存储 (7 tests)
+│   ├── test_retry.py             # 重试策略 (13 tests)
+│   ├── test_metrics.py           # 指标 (5 tests)
+│   ├── test_email.py             # 邮件 (6 tests)
+│   ├── test_webhook.py           # Webhook (11 tests)
+│   ├── test_api.py               # API (8 tests)
+│   └── test_tasks.py             # Celery 任务 (8 tests)
 ├── requirements.txt
 ├── .env.example
 └── README.md
@@ -161,10 +175,30 @@ python scripts/run_scanner.py --dry-run
 python scripts/run_scanner.py --skip-events
 ```
 
-### 5. 运行测试
+### 5. 定时调度 (Celery)
 
 ```bash
-pytest tests/ -v                          # 全部 107 个测试
+# 启动 Worker
+bash scripts/start_worker.sh
+# 或: celery -A quant_loom.tasks.celery_app worker -l info --concurrency=2
+
+# 启动 Beat 定时器
+bash scripts/start_beat.sh
+# 或: celery -A quant_loom.tasks.celery_app beat -l info
+```
+
+### 6. API 服务
+
+```bash
+uvicorn quant_loom.api.app:app --host 0.0.0.0 --port 9090
+# 健康检查: curl localhost:9090/health
+# 指标:     curl localhost:9090/metrics
+```
+
+### 7. 运行测试
+
+```bash
+pytest tests/ -v                          # 全部 160 个测试
 
 # 带覆盖率
 pytest tests/ -v --cov=quant_loom --cov-report=term-missing
@@ -267,12 +301,17 @@ scan_rules:
 - [x] LLM 分析 prompt 含真实事件上下文
 - [x] LLM 请求/响应完整日志 (`_log_request` / `_log_response` / `_log_completion`)
 
-### 第 3 阶段：生产化
+### 第 3 阶段：生产化 ✅
 
-- [ ] 引入 Celery 任务队列
-- [ ] 增加 Prometheus 指标监控
-- [ ] 完成邮件/飞书/钉钉通知
-- [ ] 增加失败重试与降级策略
+- [x] 集中化重试策略 (`quant_loom/ops/retry.py`) — 网络 3 次指数退避, DB 2 次
+- [x] SMTP 端口修复 — 465 → SMTP_SSL, 587 → STARTTLS
+- [x] Celery 任务队列 + Beat 定时调度 — 盘中每 5 分钟扫描 + 16:05 收盘日报
+- [x] Prometheus 指标 (10 metrics) — 管线/告警/通知/API/重试/健康
+- [x] FastAPI 健康检查 — /health, /health/ready, /health/live, /metrics
+- [x] 钉钉通知 — Markdown 格式 + P1 @所有人
+- [x] NotificationLog 写入 — 所有通知渠道写入审计日志
+- [x] 管线埋点 — data_fetch_duration, alerts_produced, pipeline_duration
+- [x] 53 个新单元测试
 
 ### 第 4 阶段：优化迭代
 
@@ -308,13 +347,13 @@ scan_rules:
 - **AI 可选**：未配置 LLM 密钥时跳过 AI 分析，仅输出规则结果
 - **关键指标**：数据抓取成功率、API 延迟、告警触发数、推送成功率
 
-## 原型阶段已知限制
+## 已知限制
 
 | 限制 | 说明 | 计划 |
 |------|------|------|
-| XTick 无资金流数据 | 主力净流入用成交额百分位代理 (0-20 区间) | 更多数据源 |
-| 近 250 日低位为代理值 | 使用日内价格位置 + 跌幅近似判断 | Phase 3 接入历史 K 线 |
-| 无 Celery 调度 | 直接函数调用，非定时任务 | Phase 3 引入任务队列 |
+| XTick 无资金流数据 | 主力净流入用成交额百分位代理 (0-20 区间) | Phase 4 更多数据源 |
+| 近 250 日低位为代理值 | 使用日内价格位置 + 跌幅近似判断 | Phase 4 接入历史 K 线 |
+| Redis 非必须 | 无 Redis 时自动跳过去重 | 已实现优雅降级 |
 
 ---
 

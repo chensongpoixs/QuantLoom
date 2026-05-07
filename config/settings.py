@@ -61,6 +61,7 @@ class Settings(BaseSettings):
     alert_email_to: str = ""
     wecom_webhook_url: str = ""
     feishu_webhook_url: str = ""
+    dingtalk_webhook_url: str = ""
 
     # --- 日志 ---
     log_level: str = "INFO"

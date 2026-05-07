@@ -463,7 +463,7 @@ scan_rules:
 
 ## 12. 推荐的实施路线图（更可执行）
 
-### 第 1 阶段：原型验证
+### 第 1 阶段：原型验证 ✅
 
 * 接通行情与资金流数据
 * 完成数据库建模
@@ -478,12 +478,15 @@ scan_rules:
 * 历史资金流累积 + 真实连续流入天数
 * LLM 请求/响应完整日志
 
-### 第 3 阶段：生产化
+### 第 3 阶段：生产化 ✅
 
-* 引入任务队列
-* 增加监控、日志、审计
-* 完成邮件/飞书/钉钉通知
-* 增加失败重试与降级策略
+* 引入 Celery 任务队列 + Beat 定时调度
+* 集中化重试策略 (tenacity, 指数退避)
+* SMTP 端口修复 (465=SMTP_SSL, 587=STARTTLS)
+* Prometheus 指标 (10 metrics) + FastAPI /health /metrics
+* 钉钉通知 + NotificationLog 审计日志
+* CLI 管线埋点 (duration, alerts, data_fetch)
+* 53 个新单元测试
 
 ### 第 4 阶段：优化迭代
 
