@@ -14,6 +14,7 @@ import time
 from collections import Counter
 from datetime import datetime, date
 from pathlib import Path
+from typing import Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -256,8 +257,11 @@ def _upsert_daily_fund_flow(fund_flow_df, trade_date: date):
         logger.info(f"  资金流历史写入: {saved} 条")
 
 
-def _compute_consecutive_inflow_map(codes: list[str]) -> dict[str, int]:
-    """从 sq_fund_flow_daily 计算每只股票的连续净流入天数"""
+def _compute_consecutive_inflow_map(codes: list[str], backtest_date: Optional[date] = None) -> dict[str, int]:
+    """从 sq_fund_flow_daily 计算每只股票的连续净流入天数
+
+    backtest_date: 回测日期 — 只统计该日期之前的数据，避免前瞻偏差
+    """
     from quant_loom.feature_engineering.fund_flow import FundFlowFeatures
 
     result = {}
@@ -268,10 +272,14 @@ def _compute_consecutive_inflow_map(codes: list[str]) -> dict[str, int]:
         with mysql_client.get_session() as sess:
             from sqlalchemy import desc
             for code in codes:
+                query = sess.query(FundFlowDaily.net_inflow).filter(
+                    FundFlowDaily.code == code
+                )
+                # 回测模式: 排除 backtest_date 及之后的数据
+                if backtest_date:
+                    query = query.filter(FundFlowDaily.trade_date < backtest_date)
                 rows = (
-                    sess.query(FundFlowDaily.net_inflow)
-                    .filter(FundFlowDaily.code == code)
-                    .order_by(desc(FundFlowDaily.trade_date))
+                    query.order_by(desc(FundFlowDaily.trade_date))
                     .limit(30)
                     .all()
                 )

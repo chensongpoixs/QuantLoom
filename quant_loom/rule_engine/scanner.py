@@ -3,6 +3,7 @@
 加载 YAML 规则配置 → 遍历全市场股票数据 → 匹配五类异动信号 → 返回候选列表
 """
 
+from datetime import date, datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -33,7 +34,10 @@ class MarketScanner:
     def scan(self, quotes_df: pd.DataFrame, fund_flow_df: pd.DataFrame,
              sector_stats: Optional[Dict[str, Dict]] = None,
              stock_events: Optional[Dict[str, list]] = None,
-             consecutive_inflow_map: Optional[Dict[str, int]] = None) -> List[Tuple[AlertResult, pd.Series]]:
+             consecutive_inflow_map: Optional[Dict[str, int]] = None,
+             current_time: Optional[datetime] = None,
+             backtest_mode: bool = False,
+             near_250d_low_map: Optional[Dict[str, bool]] = None) -> List[Tuple[AlertResult, pd.Series]]:
         """
         执行全市场扫描
 
@@ -41,6 +45,9 @@ class MarketScanner:
         ----------
         stock_events: {code: [event_dicts]} 各股票的近期事件
         consecutive_inflow_map: {code: days} 各股票的连续净流入天数 (从历史数据计算)
+        current_time: 用于判断尾盘窗口的时间 (回测时可传入历史时间)
+        backtest_mode: 回测模式 — 跳过事件驱动规则 (无历史事件数据)
+        near_250d_low_map: {code: bool} 回测模式下用真实 250 日最低价计算结果
 
         Returns
         -------
@@ -55,6 +62,12 @@ class MarketScanner:
         if merged.empty:
             logger.warning("合并后数据为空")
             return []
+
+        # 回测模式: 使用真实 250 日最低价计算结果覆盖启发式代理
+        if near_250d_low_map:
+            merged["near_250d_low"] = merged["code"].map(
+                lambda c: near_250d_low_map.get(str(c).zfill(6), False)
+            ).fillna(False)
 
         stock_events = stock_events or {}
         consecutive_inflow_map = consecutive_inflow_map or {}
@@ -82,18 +95,19 @@ class MarketScanner:
                 alerts.append((result, row))
 
             # 3. 尾盘抢筹
-            result = self.engine.check_tail_chasing(row)
+            result = self.engine.check_tail_chasing(row, current_time=current_time)
             if result.matched:
                 result.details["code"] = code
                 alerts.append((result, row))
 
-            # 4. 事件驱动 — 检查是否有真实事件
-            has_event = code in stock_events and len(stock_events[code]) > 0
-            result = self.engine.check_event_driven(row, has_event=has_event)
-            if result.matched:
-                result.details["code"] = code
-                result.details["has_event"] = has_event
-                alerts.append((result, row))
+            # 4. 事件驱动 — 检查是否有真实事件 (回测模式跳过: 无历史事件 API)
+            if not backtest_mode:
+                has_event = code in stock_events and len(stock_events[code]) > 0
+                result = self.engine.check_event_driven(row, has_event=has_event)
+                if result.matched:
+                    result.details["code"] = code
+                    result.details["has_event"] = has_event
+                    alerts.append((result, row))
 
             # 5. 板块联动
             if sector_stats:
@@ -111,22 +125,34 @@ class MarketScanner:
     def scan_and_format(self, quotes_df: pd.DataFrame, fund_flow_df: pd.DataFrame,
                         sector_stats: Optional[Dict] = None,
                         stock_events: Optional[Dict[str, list]] = None,
-                        consecutive_inflow_map: Optional[Dict[str, int]] = None) -> List[dict]:
+                        consecutive_inflow_map: Optional[Dict[str, int]] = None,
+                        backtest_date: Optional[date] = None,
+                        backtest_mode: bool = False,
+                        near_250d_low_map: Optional[Dict[str, bool]] = None) -> List[dict]:
         """
         扫描并返回格式化字典列表（便于入库和 AI 分析）
         每个 dict 包含完整的上游数据字段
-        """
-        from datetime import datetime
 
+        backtest_date: 回测日期 — ts 字段使用此日期，None 时使用当前时间
+        backtest_mode: 回测模式 — 跳过事件驱动规则
+        near_250d_low_map: 回测模式下的真实 250 日低位映射
+        """
         results = self.scan(quotes_df, fund_flow_df, sector_stats,
                            stock_events=stock_events,
-                           consecutive_inflow_map=consecutive_inflow_map)
+                           consecutive_inflow_map=consecutive_inflow_map,
+                           backtest_mode=backtest_mode,
+                           near_250d_low_map=near_250d_low_map)
 
         formatted = []
         for alert, row in results:
             code = str(row.get("code", ""))
+            # 回测时使用历史日期，实盘使用当前时间
+            if backtest_date:
+                ts = datetime.combine(backtest_date, datetime.min.time())
+            else:
+                ts = datetime.now()
             formatted.append({
-                "ts": datetime.now(),
+                "ts": ts,
                 "code": code,
                 "name": str(row.get("name", "")),
                 "alert_type": alert.alert_type,
@@ -140,6 +166,9 @@ class MarketScanner:
                 "risk_level": alert.risk_level,
                 "has_event": alert.details.get("has_event", False),
             })
+
+        # 置信度校准: 基于历史反馈精度修正入库值 (不影响规则匹配)
+        _calibrate_confidence_scores(formatted)
 
         return formatted
 
@@ -200,3 +229,42 @@ class MarketScanner:
 
 # 全局单例
 scanner = MarketScanner()
+
+
+def _calibrate_confidence_scores(formatted: list) -> None:
+    """
+    校准告警 confidence_score — 基于历史反馈精度修正入库值
+
+    仅影响入库值，不影响规则匹配 (规则匹配先发生)。
+    历史精度 < 0.3 的 alert_type → confidence_score 乘 0.7 系数。
+    """
+    try:
+        from quant_loom.storage.mysql_client import mysql_client
+        from quant_loom.storage.models import AlertFeedback
+        from sqlalchemy import func
+
+        if not mysql_client.ping():
+            return
+
+        with mysql_client.get_session() as sess:
+            # 查询各 alert_type 的历史精度
+            type_precision = {}
+            rows = (
+                sess.query(
+                    AlertFeedback.verdict,
+                    func.count(AlertFeedback.id).label("cnt"),
+                )
+                .group_by(AlertFeedback.verdict)
+                .all()
+            )
+            total = sum(r.cnt for r in rows if r.verdict in ("correct", "incorrect"))
+            correct = sum(r.cnt for r in rows if r.verdict == "correct")
+            overall_precision = correct / total if total > 0 else 0.5
+
+            if overall_precision < 0.3:
+                for alert_dict in formatted:
+                    alert_dict["confidence_score"] = round(
+                        alert_dict.get("confidence_score", 0) * 0.7, 2
+                    )
+    except Exception:
+        pass  # 校准失败不影响主流程

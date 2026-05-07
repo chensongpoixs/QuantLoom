@@ -42,5 +42,17 @@ app.conf.update(
             "schedule": crontab(hour=16, minute=5, day_of_week="1-5"),
             "options": {"expires": 600},
         },
+        # 自动结果回填 — 每个交易日 16:30
+        "backfill-outcomes": {
+            "task": "quant_loom.tasks.scanner_tasks.backfill_outcomes_task",
+            "schedule": crontab(hour=16, minute=30, day_of_week="1-5"),
+            "options": {"expires": 600},
+        },
+        # 刷新告警质量指标 — 每小时
+        "refresh-quality-metrics": {
+            "task": "quant_loom.tasks.scanner_tasks.refresh_quality_metrics_task",
+            "schedule": crontab(minute=37),  # 每小时第 37 分钟 (错峰)
+            "options": {"expires": 300},
+        },
     },
 )

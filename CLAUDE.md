@@ -33,7 +33,7 @@ A-share (Chinese stock market) institutional capital flow anomaly detection and 
 1. Prototype: data connection, DB modeling, rule scanner, basic alerts
 2. Enhanced: news/research report ingestion, RAG, structured AI attribution
 3. Production: task queues, monitoring/logging, multi-channel notifications, retry/degradation
-4. Optimization: backtesting, parameter tuning, feedback loop
+4. Optimization: backtesting, parameter tuning, feedback loop ✅
 
 ### System 2: AI Software Engineering Runtime (`docs/doc.md`)
 
@@ -72,8 +72,8 @@ core/
 
 - **QuantLoom**: Working prototype with full pipeline (fetch → clean → pre-scan → event fetch → historical fund flow → rule scan → AI analyze → store → notify)
 - **System 2** (AI Coding Runtime): Design-only, in `docs/doc.md`
-- **160 unit tests** across 16 test files — all passing (`pytest tests/ -v`)
-- **Test files**: `test_rule_engine.py` (18), `test_cleaner.py` (9), `test_dedup.py` (6), `test_fund_flow.py` (19), `test_price.py` (14), `test_scanner.py` (9), `test_event_fetcher.py` (11), `test_event_matcher.py` (11), `test_rag_store.py` (7), `test_retry.py` (13), `test_metrics.py` (5), `test_email.py` (6), `test_webhook.py` (11), `test_api.py` (8), `test_tasks.py` (8)
+- **208 unit tests** across 20 test files — all passing (`pytest tests/ -v`)
+- **Test files**: `test_rule_engine.py` (22), `test_cleaner.py` (9), `test_dedup.py` (6), `test_fund_flow.py` (19), `test_price.py` (14), `test_scanner.py` (9), `test_event_fetcher.py` (11), `test_event_matcher.py` (11), `test_rag_store.py` (7), `test_retry.py` (13), `test_metrics.py` (5), `test_email.py` (6), `test_webhook.py` (11), `test_api.py` (8), `test_tasks.py` (8), `test_backtest.py` (12), `test_tuning.py` (19), `test_feedback.py` (19)
 - Phase 2 (增强分析) completed:
   - Event/news data ingestion via AkShare (`event_fetcher.py`) — stock news, announcements, research reports
   - Event matching via LLM-as-ranker (`event_matcher.py`) — time filter → keyword pre-filter → LLM relevance scoring
@@ -91,6 +91,13 @@ core/
   - **Prometheus** (`quant_loom/ops/metrics.py`): 10 metrics — pipeline runs, duration, alerts, notifications, data fetch, API calls, errors, DB health, retries, build info
   - **FastAPI** (`quant_loom/api/app.py`): `GET /health`, `/health/ready`, `/health/live`, `/metrics`
   - **Pipeline instrumentation** (`scripts/run_scanner.py`): data_fetch_duration, alerts_produced, pipeline_duration, pipeline_runs
+- Phase 4 (优化迭代) completed:
+  - **Config fix**: All 3 hardcoded magic numbers eliminated — `tail_chasing` and `event_driven` now read thresholds from YAML; `check_tail_chasing()` accepts `current_time` parameter for backtesting
+  - **Backtest engine** (`scripts/run_backtest.py`): Reconstructs daily snapshots from AkShare K-line history, computes real `near_250d_low`, skips event-driven rules, tracks T+1/3/5 outcomes; stores in `sq_backtest_results`
+  - **Grid search tuner** (`quant_loom/tuning/`): Cartesian product parameter search via `GridSearchTuner`, `params_hash` MD5 caching, scoring via `0.6*precision@3d + 0.4*avg_return`, exports `rules.tuned.yaml`
+  - **Feedback loop**: `sq_alert_feedback` table, `POST /feedback` + `GET /alerts/pending-review` + `GET /alerts/quality` API endpoints, auto outcome backfill task, quality Prometheus metrics
+  - **Confidence calibration**: `_calibrate_confidence_scores()` in scanner — adjusts `confidence_score` by 0.7× for types with historical precision < 0.3
+  - **Lookahead bias fix**: `_compute_consecutive_inflow_map()` accepts `backtest_date` parameter with `trade_date < backtest_date` filter
 - Remaining limitations:
   - XTick provides no fund flow data → `main_force_ratio` proxied by turnover percentile
   - `near_250d_low` proxied by intraday range position + pct_change (no 250-day history)

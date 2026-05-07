@@ -4,13 +4,13 @@
 # ============================================================
 
 scan_rules:
-  # 全局扫描参数
-  min_turnover_amount: 100000000        # 最小成交额 1亿
-  pct_change_min: 2                     # 最小涨幅 2%
-  pct_change_max: 7                     # 最大涨幅 7%
-  super_large_inflow_ratio_min: 20      # 超大单净流入占比最低 20%
-  consecutive_inflow_days_min: 3        # 连续净流入最低天数
-  tail_chasing_start_time: "14:30"      # 尾盘抢筹开始时间
+  # 全局扫描参数 — 以下为文档参考值，各类型独立配置，互不影响
+  # min_turnover_amount: 100000000        # 参考: 最小成交额 1亿
+  # pct_change_min: 2                     # 参考: 最小涨幅 2%
+  # pct_change_max: 7                     # 参考: 最大涨幅 7%
+  # super_large_inflow_ratio_min: 20      # 参考: 超大单净流入占比最低 20%
+  # consecutive_inflow_days_min: 3        # 参考: 连续净流入最低天数
+  # tail_chasing_start_time: "14:30"      # 参考: 尾盘抢筹开始时间
   alert_cooldown_minutes: 30            # 同标的同原因冷却时间（分钟）
 
   # --- 五类异动信号规则 ---
@@ -35,6 +35,9 @@ scan_rules:
   tail_chasing:
     enabled: true
     start_time: "14:30"                  # 开始观察时间
+    pct_change_min: 1.0                  # 最低涨幅 (非尾盘窗口)
+    pct_change_max: 7.0                  # 最高涨幅 (防止涨停板)
+    main_force_ratio_min: 10.0           # 主力净流入占比最低阈值
     tail_turnover_ratio_min: 0.20        # 尾盘成交占全天比 > 20%
     tail_price_bias_min: 0.5             # 尾盘价格偏强 0.5%
     active_buy_ratio_min: 55             # 主动买盘占比 > 55%
@@ -42,9 +45,9 @@ scan_rules:
   # 4. 事件驱动型
   event_driven:
     enabled: true
-    pct_change_min: 3.0                  # 最低涨幅
+    pct_change_min: 3.0                  # 最低涨跌幅 (绝对值)
     turnover_amount_min: 80000000        # 最低成交额
-    # 事件驱动依赖外部新闻/公告数据 — 通过 AI 归因判断
+    main_force_ratio_min: 15.0           # 主力净流入占比最低阈值
 
   # 5. 板块联动型
   sector_linked:

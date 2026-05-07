@@ -313,10 +313,13 @@ scan_rules:
 - [x] 管线埋点 — data_fetch_duration, alerts_produced, pipeline_duration
 - [x] 53 个新单元测试
 
-### 第 4 阶段：优化迭代
+### 第 4 阶段：优化迭代 ✅
 
-- [ ] 历史回测
-- [ ] 参数调优
+- [x] 消除硬编码 — 所有阈值从 YAML 读取，`current_time` 参数支持回测
+- [x] 历史回测 — `scripts/run_backtest.py`，每日 K 线重建快照 + 真实 near_250d_low
+- [x] 参数调优 — GridSearchTuner 笛卡尔积搜索 + params_hash 缓存
+- [x] 告警质量评估 — AlertFeedback 表 + 3 个 API 端点 + outcome 自动回填
+- [x] 置信度校准 — 基于历史精度自动修正入库 confidence_score
 - [ ] 事件分类器优化
 - [ ] 告警质量评估与人工反馈闭环
 

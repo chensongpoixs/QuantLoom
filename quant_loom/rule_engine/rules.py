@@ -112,19 +112,22 @@ class RuleEngine:
     # ================================================================
     # 3. 尾盘抢筹型
     # ================================================================
-    def check_tail_chasing(self, row: pd.Series) -> AlertResult:
+    def check_tail_chasing(self, row: pd.Series, current_time: Optional[datetime] = None) -> AlertResult:
         """
         14:30 后资金流突然放大，尾盘主动买盘与收盘价偏强同步出现
         注：此规则依赖盘中分钟级数据，简化实现基于日级别成交额集中度判断
+
+        current_time: 用于判断尾盘窗口的时间 (回测时可传入历史时间)
         """
         cfg = self.config.get("tail_chasing", {})
         if not cfg.get("enabled", True):
             return AlertResult()
 
         # 检查当前是否在尾盘时段
-        now = datetime.now()
-        hour = now.hour
-        minute = now.minute
+        if current_time is None:
+            current_time = datetime.now()
+        hour = current_time.hour
+        minute = current_time.minute
         is_tail_window = (hour == 14 and minute >= 30) or (hour == 15 and minute == 0)
 
         pct = float(row.get("pct_change", 0) or 0)
@@ -133,8 +136,8 @@ class RuleEngine:
         active_buy = float(row.get("active_buy_ratio", main_force))  # 优先取主动买盘比
 
         # 尾盘信号：主力净流入占比高 + 涨幅适中（未封板）
-        pct_ok = 1.0 <= pct <= 7.0
-        mf_ok = main_force >= 10.0
+        pct_ok = cfg.get("pct_change_min", 1.0) <= pct <= cfg.get("pct_change_max", 7.0)
+        mf_ok = main_force >= cfg.get("main_force_ratio_min", 10.0)
 
         if not (pct_ok and mf_ok):
             return AlertResult()
@@ -178,7 +181,7 @@ class RuleEngine:
 
         pct_ok = abs(pct) >= cfg["pct_change_min"]
         turnover_ok = turnover >= cfg["turnover_amount_min"]
-        mf_ok = main_force >= 15.0  # 主力资金明显介入
+        mf_ok = main_force >= cfg.get("main_force_ratio_min", 15.0)
 
         if not (pct_ok and turnover_ok and mf_ok):
             return AlertResult()

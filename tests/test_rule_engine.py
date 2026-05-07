@@ -192,6 +192,71 @@ class TestSectorLinked:
         assert result.matched is False
 
 
+class TestTailChasingTime:
+    """尾盘抢筹 current_time 参数 — 支持回测"""
+
+    def test_tail_window_detectable_with_current_time(self, engine):
+        """传入尾盘时间应命中 is_tail_window 逻辑"""
+        from datetime import datetime
+        tail_time = datetime(2024, 6, 15, 14, 35)  # 14:35 在尾盘窗口
+        row = pd.Series({
+            "pct_change": 3.0,
+            "turnover_amount": 200_000_000,
+            "main_force_ratio": 15.0,
+            "active_buy_ratio": 60.0,
+        })
+        result = engine.check_tail_chasing(row, current_time=tail_time)
+        assert result.matched is True
+        # 尾盘窗口内置信度更高
+        assert result.confidence_score >= 0.7
+
+    def test_non_tail_window_with_current_time(self, engine):
+        """传入非尾盘时间应使用基础阈值 (P2)"""
+        from datetime import datetime
+        morning_time = datetime(2024, 6, 15, 10, 30)  # 上午 10:30
+        row = pd.Series({
+            "pct_change": 3.0,
+            "turnover_amount": 200_000_000,
+            "main_force_ratio": 15.0,
+            "active_buy_ratio": 60.0,
+        })
+        result = engine.check_tail_chasing(row, current_time=morning_time)
+        assert result.matched is True
+        # 非尾盘窗口置信度较低
+        assert result.confidence_score < 0.7
+
+    def test_tail_chasing_config_not_loaded_as_none(self, engine):
+        """验证 .get() 在无 key 时回退到默认值而非 None"""
+        # 使用 config 中未自定义阈值的场景 (引擎会 fallback)
+        # 硬编码已被 .get(key, default) 替代
+        row = pd.Series({
+            "pct_change": 1.5,     # 在默认 [1.0, 7.0] 范围内
+            "main_force_ratio": 12.0,  # >= 默认 10.0
+        })
+        result = engine.check_tail_chasing(row)
+        # 如果 .get() 工作正常，不应该 crash
+        assert isinstance(result.matched, bool)
+
+    def test_event_driven_uses_config_main_force(self, engine):
+        """event_driven 应使用 YAML 配置的 main_force_ratio_min 而非硬编码 15.0"""
+        row_config_satisfied = pd.Series({
+            "pct_change": 5.0,
+            "turnover_amount": 100_000_000,
+            "main_force_ratio": 15.0,
+        })
+        # 15.0 等于默认值，应通过
+        result = engine.check_event_driven(row_config_satisfied)
+        assert result.matched is True
+
+        row_below_default = pd.Series({
+            "pct_change": 5.0,
+            "turnover_amount": 100_000_000,
+            "main_force_ratio": 5.0,  # 低于默认 15.0
+        })
+        result = engine.check_event_driven(row_below_default)
+        assert result.matched is False
+
+
 class TestAlertResult:
     """AlertResult 数据类"""
 

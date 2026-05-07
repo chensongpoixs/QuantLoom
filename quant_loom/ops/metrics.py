@@ -82,4 +82,25 @@ build_info = Info(
     "quantloom_build",
     "QuantLoom 构建信息",
 )
-build_info.info({"version": "0.3.0", "phase": "3-production"})
+build_info.info({"version": "0.4.0", "phase": "4-optimization"})
+
+# ---- 告警质量 (Phase 4) ----
+
+alert_precision = Gauge(
+    "quantloom_alert_precision",
+    "告警方向精度 (0-1)",
+    ["alert_type", "window"],  # window: 1d/3d/5d
+)
+
+alert_relevance_score = Histogram(
+    "quantloom_alert_relevance_score",
+    "人工反馈相关度评分分布",
+    ["alert_type"],
+    buckets=(0.1, 0.3, 0.5, 0.7, 0.9, 1.0),
+)
+
+alert_outcome_correct = Counter(
+    "quantloom_alert_outcomes_total",
+    "结果方向正确/错误计数",
+    ["alert_type", "outcome"],  # outcome: correct/incorrect
+)

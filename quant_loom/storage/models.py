@@ -163,3 +163,53 @@ class FundFlowDaily(Base):
         Index("uk_ffd_code_date", "code", "trade_date", unique=True),
         Index("idx_ffd_date", "trade_date"),
     )
+
+
+class BacktestResult(Base):
+    """回测结果表 — 存储历史回测的告警与后续表现"""
+
+    __tablename__ = "sq_backtest_results"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    trade_date = Column(Date, nullable=False, comment="交易日期")
+    code = Column(String(10), nullable=False, comment="股票代码")
+    name = Column(String(50), comment="股票名称")
+    alert_type = Column(String(50), comment="异动类型")
+    trigger_reason = Column(Text, comment="触发原因描述")
+    confidence_score = Column(Float, comment="规则置信度")
+    pct_change_alert = Column(Numeric(10, 4), comment="异动当日涨跌幅(%)")
+    main_force_ratio = Column(Numeric(10, 4), comment="异动当日主力占比(%)")
+    outcome_1d = Column(Numeric(10, 4), comment="T+1 涨跌幅(%)")
+    outcome_3d = Column(Numeric(10, 4), comment="T+3 涨跌幅(%)")
+    outcome_5d = Column(Numeric(10, 4), comment="T+5 涨跌幅(%)")
+    outcome_positive = Column(Boolean, comment="T+3 方向正确 (涨价涨/跌价跌)")
+    params_hash = Column(String(64), comment="参数组合 MD5 哈希 (用于缓存)")
+    created_at = Column(DateTime, default=datetime.now)
+
+    __table_args__ = (
+        Index("idx_bktr_date_code", "trade_date", "code"),
+        Index("idx_bktr_hash", "params_hash", "trade_date"),
+    )
+
+
+class AlertFeedback(Base):
+    """告警反馈表 — 人工复核 + 自动结果回填"""
+
+    __tablename__ = "sq_alert_feedback"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    alert_id = Column(BigInteger, nullable=False, comment="关联告警 ID (sq_stock_alerts.id)")
+    feedback_type = Column(String(20), default="manual", comment="反馈类型: manual/auto")
+    reviewer = Column(String(50), comment="评审人")
+    verdict = Column(String(20), comment="评审结论: correct/incorrect/ambiguous")
+    relevance_score = Column(Float, comment="相关度评分 0-1")
+    outcome_1d = Column(Numeric(10, 4), comment="告警 1 日后涨跌幅(%)")
+    outcome_3d = Column(Numeric(10, 4), comment="告警 3 日后涨跌幅(%)")
+    outcome_5d = Column(Numeric(10, 4), comment="告警 5 日后涨跌幅(%)")
+    notes = Column(Text, comment="备注")
+    created_at = Column(DateTime, default=datetime.now)
+
+    __table_args__ = (
+        Index("idx_af_alert_id", "alert_id"),
+        Index("idx_af_verdict", "verdict"),
+    )
