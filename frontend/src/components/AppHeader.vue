@@ -9,8 +9,8 @@
         {{ open ? '✕' : '☰' }}
       </button>
       <nav class="header-nav" :class="{ open }">
-        <router-link to="/" @click="open = false">Dashboard</router-link>
-        <router-link to="/alerts" @click="open = false">Alerts</router-link>
+        <router-link to="/" @click="open = false">仪表盘</router-link>
+        <router-link to="/alerts" @click="open = false">告警列表</router-link>
       </nav>
     </div>
   </header>

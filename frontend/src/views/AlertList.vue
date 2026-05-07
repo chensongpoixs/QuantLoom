@@ -1,22 +1,22 @@
 <template>
   <div>
     <div class="page-header-row">
-      <h1 class="page-title">Alerts</h1>
+      <h1 class="page-title">告警列表</h1>
     </div>
 
     <!-- Filters -->
     <div class="filter-bar">
       <select v-model="store.filterType" @change="search">
-        <option value="">All Types</option>
-        <option value="breakout">Breakout</option>
-        <option value="accumulation">Accumulation</option>
-        <option value="tail_chasing">Tail Chasing</option>
-        <option value="event_driven">Event Driven</option>
-        <option value="sector_linked">Sector Linked</option>
+        <option value="">全部类型</option>
+        <option value="breakout">放量上攻</option>
+        <option value="accumulation">底部吸筹</option>
+        <option value="tail_chasing">尾盘抢筹</option>
+        <option value="event_driven">事件驱动</option>
+        <option value="sector_linked">板块联动</option>
       </select>
 
       <select v-model="store.filterRisk" @change="search">
-        <option value="">All Risks</option>
+        <option value="">全部风险</option>
         <option value="P1">P1</option>
         <option value="P2">P2</option>
         <option value="P3">P3</option>
@@ -25,7 +25,7 @@
       <input
         v-model="store.filterCode"
         type="text"
-        placeholder="Code / Name ..."
+        placeholder="代码 / 名称 ..."
         @keyup.enter="search"
         style="width:140px"
       />
@@ -33,12 +33,12 @@
       <input v-model="store.filterStart" type="date" @change="search" style="width:140px" />
       <input v-model="store.filterEnd" type="date" @change="search" style="width:140px" />
 
-      <button class="btn-reset" @click="resetAll">Reset</button>
+      <button class="btn-reset" @click="resetAll">重置</button>
     </div>
 
     <!-- Alert list -->
     <div v-if="store.loading" class="spinner">
-      <span>Loading alerts...</span>
+      <span>加载告警中...</span>
     </div>
 
     <template v-else-if="store.alerts.length">
@@ -59,7 +59,7 @@
 
     <div v-else class="empty-state">
       <div class="empty-icon">🔍</div>
-      <div class="empty-text">No alerts found matching your filters.</div>
+      <div class="empty-text">没有匹配筛选条件的告警。</div>
     </div>
   </div>
 </template>

@@ -20,7 +20,7 @@
       {{ alert.trigger_reason }}
     </div>
     <div class="alert-card-bottom">
-      <span>{{ alert.alert_type }}</span>
+      <span>{{ ALERT_TYPE_LABELS[alert.alert_type || ''] || alert.alert_type }}</span>
       <span>·</span>
       <span v-if="alert.ts">{{ formatTime(alert.ts) }}</span>
       <span>·</span>
@@ -43,6 +43,14 @@ const confidenceClass = computed(() => {
   if (v >= 0.4) return 'medium'
   return 'low'
 })
+
+const ALERT_TYPE_LABELS: Record<string, string> = {
+  breakout: '放量上攻',
+  accumulation: '底部吸筹',
+  tail_chasing: '尾盘抢筹',
+  event_driven: '事件驱动',
+  sector_linked: '板块联动',
+}
 
 function formatTime(ts: string) {
   const d = new Date(ts)

@@ -1,40 +1,40 @@
 <template>
   <div>
     <div class="detail-header">
-      <button class="detail-back" @click="$router.push('/alerts')">← Back</button>
+      <button class="detail-back" @click="$router.push('/alerts')">← 返回</button>
       <h1 class="page-title" style="margin:0">
-        {{ alert?.name || 'Alert Detail' }}
+        {{ alert?.name || '告警详情' }}
         <span style="font-family:var(--font-mono);font-size:0.9rem;color:var(--text-muted)">{{ alert?.code }}</span>
       </h1>
       <RiskBadge v-if="alert" :level="alert.risk_level" style="margin-left:auto" />
     </div>
 
     <!-- Loading -->
-    <div v-if="store.detailLoading" class="spinner">Loading alert detail...</div>
+    <div v-if="store.detailLoading" class="spinner">加载告警详情中...</div>
 
     <template v-else-if="alert">
       <!-- Basic Info -->
       <div class="section">
-        <div class="section-title">Basic Information</div>
+        <div class="section-title">基本信息</div>
         <div class="detail-grid">
           <div class="detail-field">
-            <span class="field-label">Alert ID</span>
+            <span class="field-label">告警 ID</span>
             <span class="field-value mono">#{{ alert.id }}</span>
           </div>
           <div class="detail-field">
-            <span class="field-label">Trigger Time</span>
+            <span class="field-label">触发时间</span>
             <span class="field-value">{{ fmtDt(alert.ts) }}</span>
           </div>
           <div class="detail-field">
-            <span class="field-label">Alert Type</span>
-            <span class="field-value">{{ alert.alert_type }}</span>
+            <span class="field-label">异动类型</span>
+            <span class="field-value">{{ typeLabel(alert.alert_type) }}</span>
           </div>
           <div class="detail-field">
-            <span class="field-label">Risk Level</span>
+            <span class="field-label">风险等级</span>
             <span class="field-value"><RiskBadge :level="alert.risk_level" /></span>
           </div>
           <div class="detail-field">
-            <span class="field-label">Confidence Score</span>
+            <span class="field-label">置信度</span>
             <span class="field-value">
               <div class="confidence-bar" style="width:160px">
                 <span class="bar-track">
@@ -49,9 +49,9 @@
             </span>
           </div>
           <div class="detail-field">
-            <span class="field-label">Push Status</span>
+            <span class="field-label">推送状态</span>
             <span class="field-value" :style="{ color: alert.is_sent ? 'var(--accent-green)' : 'var(--text-muted)' }">
-              {{ alert.is_sent ? 'Sent' : 'Pending' }}
+              {{ alert.is_sent ? '已推送' : '待推送' }}
             </span>
           </div>
         </div>
@@ -59,20 +59,20 @@
 
       <!-- Trigger Reason -->
       <div class="section" v-if="alert.trigger_reason">
-        <div class="section-title">Trigger Reason</div>
+        <div class="section-title">触发原因</div>
         <p style="font-size:0.9rem;line-height:1.7">{{ alert.trigger_reason }}</p>
       </div>
 
       <!-- Fund Flow -->
       <div class="section">
-        <div class="section-title">Fund Flow</div>
+        <div class="section-title">资金流向</div>
         <div class="detail-grid">
           <div class="detail-field">
-            <span class="field-label">Net Inflow Amount</span>
+            <span class="field-label">净流入金额</span>
             <span class="field-value mono">{{ fmtAmt(alert.net_inflow_amount) }}</span>
           </div>
           <div class="detail-field">
-            <span class="field-label">Inflow Ratio</span>
+            <span class="field-label">净流入占比</span>
             <span class="field-value mono">{{ (alert.inflow_ratio || 0).toFixed(2) }}%</span>
           </div>
         </div>
@@ -80,26 +80,26 @@
 
       <!-- AI Analysis -->
       <div class="section" v-if="alert.ai_summary || alert.ai_evidence">
-        <div class="section-title">AI Analysis</div>
+        <div class="section-title">AI 分析</div>
         <div v-if="alert.ai_summary" class="ai-summary-box">
           {{ alert.ai_summary }}
         </div>
         <div v-if="alert.ai_evidence" style="margin-top:12px">
-          <div class="field-label" style="margin-bottom:6px">Evidence</div>
+          <div class="field-label" style="margin-bottom:6px">证据</div>
           <div class="ai-evidence-box">{{ fmtJson(alert.ai_evidence) }}</div>
         </div>
       </div>
 
       <!-- Related Events -->
       <div class="section" v-if="alert.related_events?.length">
-        <div class="section-title">Related Events</div>
+        <div class="section-title">关联事件</div>
         <ul class="event-list">
           <li v-for="e in alert.related_events" :key="e.id">
             <div class="event-title">{{ e.title }}</div>
             <div class="event-meta">
               {{ e.event_type }} · {{ e.source }} · {{ fmtDt(e.published_at) }}
               <span v-if="e.sentiment_score != null" style="margin-left:4px">
-                (sentiment: {{ e.sentiment_score.toFixed(2) }})
+                (情感: {{ e.sentiment_score > 0 ? '+' : '' }}{{ e.sentiment_score.toFixed(2) }})
               </span>
             </div>
           </li>
@@ -108,7 +108,7 @@
 
       <!-- Notification Logs -->
       <div class="section" v-if="alert.notification_logs?.length">
-        <div class="section-title">Notification Logs</div>
+        <div class="section-title">通知日志</div>
         <div class="notif-log-item" v-for="n in alert.notification_logs" :key="n.id">
           <span class="notif-channel">{{ n.channel }}</span>
           <span class="notif-status" :class="n.status">{{ n.status }}</span>
@@ -121,7 +121,7 @@
     <!-- Error -->
     <div v-else class="empty-state">
       <div class="empty-icon">⚠️</div>
-      <div class="empty-text">Alert not found.</div>
+      <div class="empty-text">告警未找到。</div>
     </div>
   </div>
 </template>
@@ -131,6 +131,20 @@ import { computed, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAlertsStore } from '@/stores/alerts'
 import RiskBadge from '@/components/RiskBadge.vue'
+
+// ---- helper ----
+
+const ALERT_TYPE_LABELS: Record<string, string> = {
+  breakout: '放量上攻',
+  accumulation: '底部吸筹',
+  tail_chasing: '尾盘抢筹',
+  event_driven: '事件驱动',
+  sector_linked: '板块联动',
+}
+function typeLabel(t: string | null) {
+  if (!t) return '--'
+  return ALERT_TYPE_LABELS[t] || t
+}
 
 const route = useRoute()
 const store = useAlertsStore()

@@ -22,10 +22,18 @@ const COLOR_MAP: Record<string, string> = {
 }
 
 function buildOption(data: TrendData) {
+  const ALERT_TYPE_LABELS: Record<string, string> = {
+    breakout: '放量上攻',
+    accumulation: '底部吸筹',
+    tail_chasing: '尾盘抢筹',
+    event_driven: '事件驱动',
+    sector_linked: '板块联动',
+  }
+
   const series: any[] = []
   for (const [type, values] of Object.entries(data.by_type)) {
     series.push({
-      name: type,
+      name: ALERT_TYPE_LABELS[type] || type,
       type: 'line',
       data: values,
       smooth: true,
@@ -37,7 +45,7 @@ function buildOption(data: TrendData) {
   }
 
   series.push({
-    name: 'Total',
+    name: '总计',
     type: 'line',
     data: data.totals,
     smooth: true,

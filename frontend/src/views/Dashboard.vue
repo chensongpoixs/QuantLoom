@@ -1,8 +1,8 @@
 <template>
   <div>
     <div class="page-header-row">
-      <h1 class="page-title">Dashboard</h1>
-      <button class="btn-refresh" @click="refresh">Refresh</button>
+      <h1 class="page-title">仪表盘</h1>
+      <button class="btn-refresh" @click="refresh">刷新</button>
     </div>
 
     <!-- Stats Grid -->
@@ -18,7 +18,7 @@
 
     <!-- Trend Chart -->
     <div class="section">
-      <div class="section-title">Alert Trend (7 days)</div>
+      <div class="section-title">告警趋势（近7天）</div>
       <div v-if="store.trendLoading && !store.trend" class="skeleton" style="height:320px"></div>
       <TrendChart v-else :data="store.trend" />
     </div>
@@ -26,28 +26,28 @@
     <!-- Top Alerts -->
     <div class="section">
       <div class="section-title">
-        Recent High-Confidence Alerts
-        <router-link to="/alerts" style="margin-left:auto;font-size:0.85rem;font-weight:400">View all →</router-link>
+        最近高置信度告警
+        <router-link to="/alerts" style="margin-left:auto;font-size:0.85rem;font-weight:400">查看全部 →</router-link>
       </div>
 
-      <div v-if="store.loading" class="spinner">Loading...</div>
+      <div v-if="store.loading" class="spinner">加载中...</div>
 
       <table v-else-if="topAlerts.length" class="top-alerts-table">
         <thead>
           <tr>
-            <th>Code</th>
-            <th>Name</th>
-            <th>Type</th>
-            <th>Confidence</th>
-            <th>Risk</th>
-            <th>Time</th>
+            <th>代码</th>
+            <th>名称</th>
+            <th>类型</th>
+            <th>置信度</th>
+            <th>风险</th>
+            <th>时间</th>
           </tr>
         </thead>
         <tbody>
           <tr v-for="a in topAlerts" :key="a.id" @click="$router.push(`/alerts/${a.id}`)">
             <td><strong>{{ a.code }}</strong></td>
             <td>{{ a.name }}</td>
-            <td>{{ a.alert_type }}</td>
+            <td>{{ typeLabel(a.alert_type) }}</td>
             <td>
               <div class="confidence-bar" style="width:80px">
                 <span class="bar-track">
@@ -68,7 +68,7 @@
 
       <div v-else class="empty-state">
         <div class="empty-icon">📊</div>
-        <div class="empty-text">No alerts yet. Run the scanner to generate alerts.</div>
+        <div class="empty-text">暂无告警数据，请运行扫描器生成告警。</div>
       </div>
     </div>
   </div>
@@ -93,6 +93,18 @@ function fmtTs(ts: string | null) {
   if (!ts) return ''
   const d = new Date(ts)
   return `${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`
+}
+
+const ALERT_TYPE_LABELS: Record<string, string> = {
+  breakout: '放量上攻',
+  accumulation: '底部吸筹',
+  tail_chasing: '尾盘抢筹',
+  event_driven: '事件驱动',
+  sector_linked: '板块联动',
+}
+function typeLabel(t: string | null) {
+  if (!t) return '--'
+  return ALERT_TYPE_LABELS[t] || t
 }
 
 async function refresh() {
