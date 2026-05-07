@@ -17,8 +17,8 @@
                    └───────────┬─────────────┘
                                │
 ┌──────────┐    ┌──────────┐   ▼   ┌──────────┐    ┌──────────┐
-│ AkShare  │───▶│ 采集层   │──▶│ 清洗层   │──▶│ 特征层   │
-│ 行情/资金 │    │          │   │          │   │          │
+│XTick/AK  │───▶│ 采集层   │──▶│ 清洗层   │──▶│ 特征层   │
+│Share双源  │    │          │   │          │   │          │
 └──────────┘    └──────────┘   └──────────┘   └─────┬────┘
                                                     │
               ┌─────────────────────────────────────┤
@@ -65,7 +65,8 @@ quant_loom/
 │   └── rules.yaml               # 规则阈值 (可调参)
 ├── quant_loom/
 │   ├── data_ingestion/          # 采集层
-│   │   ├── akshare_fetcher.py   #   AkShare 行情/资金流抓取
+│   │   ├── xtick_fetcher.py     #   XTick 行情/K线抓取
+│   │   ├── akshare_fetcher.py   #   AkShare 东方财富数据抓取
 │   │   └── cleaner.py           #   停牌过滤、异常值检测
 │   ├── feature_engineering/     # 特征层
 │   │   ├── fund_flow.py         #   资金流特征
@@ -75,7 +76,7 @@ quant_loom/
 │   │   ├── scanner.py           #   全市场扫描器
 │   │   └── dedup.py             #   Redis 去重
 │   ├── ai_analyzer/             # AI 分析层
-│   │   └── llm_client.py        #   LLM 调用 (OpenAI/Anthropic)
+│   │   └── llm_client.py        #   LLM 调用 (OpenAI/Anthropic/llama.cpp)
 │   ├── notification/            # 通知层
 │   │   ├── email_sender.py      #   HTML 邮件日报
 │   │   └── webhook.py           #   企业微信/飞书推送
@@ -120,12 +121,12 @@ pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
 # 复制环境变量模板
 cp .env.example .env
 
-# 编辑 .env，填入 MySQL/Redis 连接信息
+# 编辑 .env，填入数据源 / MySQL / Redis 连接信息
 # 至少需要配置:
+#   DATA_SOURCE=xtick      # 数据源: "xtick" (需 token) 或 "akshare" (免费)
+#   XTICK_TOKEN            # http://www.xtick.top 注册获取 (仅 xtick 模式)
 #   MYSQL_HOST, MYSQL_PORT, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE
 #   REDIS_HOST, REDIS_PORT
-# 可选配置 AI:
-#   OPENAI_API_KEY  或  ANTHROPIC_API_KEY
 ```
 
 ### 3. 初始化数据库
@@ -260,7 +261,8 @@ scan_rules:
 |------|------|
 | 语言 | Python 3.12 |
 | 环境管理 | Conda |
-| 数据源 | AkShare |
+| 数据源 | XTick (api.xtick.top) / AkShare (东方财富) 双源可配置 |
+| 数据格式 | HTTP REST API (JSON) / AkShare Python SDK |
 | 关系数据库 | MySQL 8.0+ |
 | 缓存/去重 | Redis |
 | 任务队列 | Celery (生产) / APScheduler (原型) |

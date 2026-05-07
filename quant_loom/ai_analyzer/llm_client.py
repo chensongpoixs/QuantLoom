@@ -197,14 +197,31 @@ class LLMClient:
         }
 
     def batch_analyze(self, alerts: list[dict]) -> list[dict]:
-        """批量 AI 分析"""
+        """批量 AI 分析，带进度和节流"""
+        import time
+
         results = []
-        for alert in alerts:
+        total = len(alerts)
+
+        for i, alert in enumerate(alerts):
+            code = alert.get("code", "?")
+            a_type = alert.get("alert_type", "?")
+            print(f"  [{i+1}/{total}] {code} {a_type} ...", end=" ", flush=True)
+
+            # 节流: 至少间隔 0.5 秒
+            if i > 0:
+                time.sleep(0.5)
+
             analysis = self.analyze(alert)
             if analysis:
                 alert["ai_summary"] = analysis.get("summary", "")
                 alert["ai_evidence"] = analysis
+                print(f"OK ({analysis.get('reason_type', analysis.get('reason', ''))})", flush=True)
+            else:
+                print("SKIP", flush=True)
+
             results.append(alert)
+
         return results
 
 

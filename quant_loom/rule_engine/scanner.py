@@ -31,19 +31,13 @@ class MarketScanner:
             return yaml.safe_load(f)
 
     def scan(self, quotes_df: pd.DataFrame, fund_flow_df: pd.DataFrame,
-             sector_stats: Optional[Dict[str, Dict]] = None) -> List[AlertResult]:
+             sector_stats: Optional[Dict[str, Dict]] = None) -> List[Tuple[AlertResult, pd.Series]]:
         """
         执行全市场扫描
 
-        Parameters
-        ----------
-        quotes_df : 行情快照 DataFrame (已清洗)
-        fund_flow_df : 资金流 DataFrame (已清洗、含特征)
-        sector_stats : 板块统计数据 dict, key=sector_name
-
         Returns
         -------
-        List[AlertResult] : 匹配的异动列表，按置信度降序
+        List[Tuple[AlertResult, pd.Series]] : (告警结果, 原始数据行) 列表，按置信度降序
         """
         if quotes_df.empty:
             logger.warning("行情数据为空，跳过扫描")
@@ -62,21 +56,25 @@ class MarketScanner:
             # 1. 放量上攻
             result = self.engine.check_breakout(row)
             if result.matched:
+                result.details["code"] = row.get("code", "")
                 alerts.append((result, row))
 
-            # 2. 底部吸筹（需要历史数据 — 此处简化，传 0 天）
+            # 2. 底部吸筹
             result = self.engine.check_accumulation(row, consecutive_inflow_days=0)
             if result.matched:
+                result.details["code"] = row.get("code", "")
                 alerts.append((result, row))
 
             # 3. 尾盘抢筹
             result = self.engine.check_tail_chasing(row)
             if result.matched:
+                result.details["code"] = row.get("code", "")
                 alerts.append((result, row))
 
-            # 4. 事件驱动（先匹配资金面，事件确认留给 AI）
+            # 4. 事件驱动
             result = self.engine.check_event_driven(row, has_event=False)
             if result.matched:
+                result.details["code"] = row.get("code", "")
                 alerts.append((result, row))
 
             # 5. 板块联动
@@ -85,41 +83,37 @@ class MarketScanner:
                 if industry and industry in sector_stats:
                     result = self.engine.check_sector_linked(row, sector_stats[industry])
                     if result.matched:
+                        result.details["code"] = row.get("code", "")
                         alerts.append((result, row))
 
-        # 按置信度降序排列
         sorted_alerts = sorted(alerts, key=lambda x: x[0].confidence_score, reverse=True)
-
         logger.info(f"扫描完成: 发现 {len(sorted_alerts)} 个异动信号")
-        return [a[0] for a in sorted_alerts]
+        return sorted_alerts
 
     def scan_and_format(self, quotes_df: pd.DataFrame, fund_flow_df: pd.DataFrame,
                         sector_stats: Optional[Dict] = None) -> List[dict]:
         """
-        扫描并返回格式化字典列表（便于入库）
+        扫描并返回格式化字典列表（便于入库和 AI 分析）
+        每个 dict 包含完整的上游数据字段
         """
         from datetime import datetime
 
         results = self.scan(quotes_df, fund_flow_df, sector_stats)
 
-        # 重新合并数据以便获取 name 等字段
-        merged = self._merge_data(quotes_df, fund_flow_df)
-        code_to_row = {}
-        for _, row in merged.iterrows():
-            code_to_row[row.get("code", "")] = row
-
         formatted = []
-        for alert in results:
-            code = alert.details.get("code", "") if hasattr(alert, 'details') else ""
-            row = code_to_row.get(code, pd.Series())
+        for alert, row in results:
+            code = str(row.get("code", ""))
             formatted.append({
                 "ts": datetime.now(),
-                "code": code or row.get("code", ""),
-                "name": row.get("name", "") if hasattr(row, 'get') else "",
+                "code": code,
+                "name": str(row.get("name", "")),
                 "alert_type": alert.alert_type,
                 "trigger_reason": alert.trigger_reason,
-                "net_inflow_amount": row.get("net_inflow", 0) if hasattr(row, 'get') else 0,
-                "inflow_ratio": row.get("main_force_ratio", 0) if hasattr(row, 'get') else 0,
+                "pct_change": float(row.get("pct_change", 0) or 0),
+                "turnover_amount": float(row.get("turnover_amount", 0) or 0),
+                "main_force_ratio": float(row.get("main_force_ratio", 0) or 0),
+                "net_inflow_amount": float(row.get("net_inflow", 0) or 0),
+                "inflow_ratio": float(row.get("main_force_ratio", 0) or 0),
                 "confidence_score": alert.confidence_score,
                 "risk_level": alert.risk_level,
             })
@@ -157,6 +151,13 @@ class MarketScanner:
                 merged[col] = 0.0
         merged[["main_force_ratio", "net_inflow", "super_large_ratio", "large_ratio"]] = \
             merged[["main_force_ratio", "net_inflow", "super_large_ratio", "large_ratio"]].fillna(0)
+
+        # 资金流数据不可用时 (全部为 0)，用成交额百分位作为主力参与度代理
+        # 成交额越大 → 机构参与概率越高 → main_force_ratio 代理值越高
+        if merged["main_force_ratio"].sum() == 0 and "turnover_amount" in merged.columns:
+            to = pd.to_numeric(merged["turnover_amount"], errors="coerce").fillna(0)
+            # 成交额排名百分位 * 20 → 映射到 0-20 区间
+            merged["main_force_ratio"] = (to.rank(pct=True) * 20).round(2)
 
         return merged
 

@@ -4,7 +4,11 @@
 # ============================================================
 
 # --- 数据源 ---
-akshare>=1.14.0
+# XTick HTTP API (主力数据源)
+# 注册获取 token: http://www.xtick.top
+requests>=2.31
+# AkShare / 东方财富 (免费备用数据源)
+akshare   #>=1.14.0
 
 # --- 数据库 ---
 sqlalchemy>=2.0

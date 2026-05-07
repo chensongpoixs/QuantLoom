@@ -38,6 +38,15 @@ class Settings(BaseSettings):
     llama_model: str = ""         # e.g. qwen3-32b
     llama_api_key: str = "not-needed"  # llama.cpp 默认不需要 key
 
+    # --- 数据源 ---
+    # "xtick" = XTick HTTP API (推荐, 需 token)
+    # "akshare" = AkShare / 东方财富 (免费, 但可能网络受限)
+    data_source: str = "xtick"
+
+    # --- XTick ---
+    xtick_token: str = ""           # xtick.top 注册获取 token
+    xtick_api_url: str = "http://api.xtick.top/doc/market"
+
     # --- 通知 ---
     smtp_host: str = ""
     smtp_port: int = 587

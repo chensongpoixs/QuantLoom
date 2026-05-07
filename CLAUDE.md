@@ -4,21 +4,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a design/planning-phase repository containing architectural blueprints for two distinct systems. No code has been written yet.
+This repository contains two systems: AI-WhaleWatcher (working Python prototype) and an AI Software Engineering Runtime (Go design doc only).
 
-### System 1: AI-WhaleWatcher (`docs/quant_loom.md`)
+### System 1: AI-WhaleWatcher — Working Prototype
 
 A-share (Chinese stock market) institutional capital flow anomaly detection and early warning system. Full-market coverage (5000+ stocks) with multi-source fusion of fund flow, price action, news sentiment, and research reports.
 
 - **Language**: Python 3.12
 - **Environment**: Conda environment `quant_loom` — create with `conda create -n quant_loom python=3.12` and activate with `conda activate quant_loom`
-- **Data sources**: AkShare / Tushare
-- **Storage**: MySQL (business data), Redis (caching/dedup), optional ClickHouse for high-throughput time-series
+- **Data sources**: XTick (api.xtick.top) and AkShare (东方财富) — dual-source, configurable via `DATA_SOURCE` env var ("xtick" or "akshare"). XTick requires a token from http://www.xtick.top.
+- **Storage**: MySQL (business data), Redis (caching/dedup — optional, graceful degradation)
 - **Task scheduling**: APScheduler (prototype) → Celery + Redis/RabbitMQ (production)
-- **AI integration**: LLM APIs (GPT/DeepSeek/Claude) for structured JSON attribution; RAG via pgvector/Milvus/Elasticsearch for document retrieval
+- **AI integration**: Three LLM providers (priority order: llama.cpp > OpenAI > Anthropic). Structured JSON output for anomaly attribution.
 
-**Architecture**: Event-driven, 7-layer decoupled pipeline:
-1. Collection → 2. Cleaning → 3. Feature Engineering → 4. Rule Engine → 5. Model (LLM/RAG) → 6. Service (alerts, reports, API) → 7. Operations (monitoring, logging)
+**Architecture**: 7-layer decoupled pipeline:
+1. Collection (XTick/AkShare) → 2. Cleaning → 3. Feature Engineering → 4. Rule Engine → 5. LLM Analysis → 6. Service (alerts, reports, API) → 7. Operations (monitoring, logging)
 
 **Data layering**: ODS (raw) → DWD (cleaned) → DWS (aggregated) → ADS (results)
 
@@ -67,17 +67,30 @@ core/
 
 ## Current State
 
-- AI-WhaleWatcher (System 1) has a working prototype implementation; System 2 remains design-only
-- Two untracked design documents in `docs/`: `doc.md`, `quant_loom.md`
-- Implementation work should begin by referring to the detailed specs in these documents
+- **AI-WhaleWatcher**: Working prototype with full pipeline (fetch → clean → scan → AI analyze → store → notify)
+- **System 2** (AI Coding Runtime): Design-only, in `docs/doc.md`
+- 33 unit tests covering rules, cleaner, dedup — all passing (`pytest tests/ -v`)
+- Key limitations of current prototype:
+  - XTick provides no fund flow data (uses turnover percentile as proxy)
+  - AkShare provides fund flow + stock names but may be network-restricted
+  - No event/news ingestion yet (Phase 2)
+  - No Celery task scheduling yet (uses direct function calls)
 
 ### Quick Start (AI-WhaleWatcher)
 
 ```bash
-cd quant_loom/
-# Install deps: pip install -r requirements.txt
-# Configure: cp .env.example .env && edit .env
-# Init DB: python scripts/init_db.py
-# Run scanner: python scripts/run_scanner.py [--dry-run]
-# Run tests: pytest tests/ -v
+# Install deps
+pip install -r requirements.txt
+# Configure
+cp .env.example .env
+# Edit .env — set DATA_SOURCE (xtick/akshare), MySQL/Redis connections, LLM keys
+# Init DB
+python scripts/init_db.py
+# Run scanner (top 10 AI-analyzed by default)
+python scripts/run_scanner.py              # full run
+python scripts/run_scanner.py --top 20     # AI analyze top 20
+python scripts/run_scanner.py --top 0      # skip AI analysis
+python scripts/run_scanner.py --dry-run    # scan only, no DB writes
+# Run tests
+pytest tests/ -v
 ```

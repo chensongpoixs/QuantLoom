@@ -3,6 +3,8 @@
 从行情数据中提取技术面特征
 """
 
+from typing import Optional
+
 import pandas as pd
 
 

@@ -42,7 +42,7 @@ _HTML_TEMPLATE = """<!DOCTYPE html>
 <p>本报告仅供研究参考，不构成投资建议。所有信号基于公开数据与规则引擎自动生成，可能存在误报或滞后。</p>
 
 <div class="footer">
-<p>AI-WhaleWatcher · 数据来源: AkShare · 免责声明: 系统输出仅供研究信息参考</p>
+<p>AI-WhaleWatcher · 数据来源: XTick · 免责声明: 系统输出仅供研究信息参考</p>
 </div>
 </body>
 </html>"""
