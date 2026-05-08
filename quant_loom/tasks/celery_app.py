@@ -105,8 +105,8 @@ app.conf.update(
     beat_schedule={
         "market-hours-scan": {
             "task": "quant_loom.tasks.scanner_tasks.scan_task",
-            "schedule": 300.0,          # 每 5 分钟
-            "options": {"expires": 240},  # 过期不重试旧任务
+            "schedule": 600.0,          # 每 10 分钟
+            "options": {"expires": 540},  # 9 分钟过期，不重试旧任务
         },
         # 收盘日报 — 每个交易日 16:05 (已收盘)
         "closing-daily-report": {
