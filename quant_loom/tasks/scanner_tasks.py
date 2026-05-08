@@ -43,6 +43,7 @@
 由 Beat 定时触发，执行全市场扫描管线。
 """
 
+import importlib.util
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -51,10 +52,34 @@ from loguru import logger
 
 from quant_loom.tasks.celery_app import app
 
-# 确保项目根目录在 Python path 中 (Celery worker 可能不包含)
-_PROJECT_ROOT = str(Path(__file__).resolve().parent.parent.parent)
-if _PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, _PROJECT_ROOT)
+# 项目根目录 (绝对路径)
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+
+
+def _load_main():
+    """Load the main() function from scripts/run_scanner.py by absolute path.
+
+    Uses importlib to bypass sys.path / __pycache__ / namespace-package issues
+    that can occur when the Celery worker runs on Windows with thread pool.
+    """
+    # Ensure project root is in sys.path (needed for run_scanner's own imports)
+    _root_str = str(_PROJECT_ROOT)
+    if _root_str not in sys.path:
+        sys.path.insert(0, _root_str)
+
+    # Clear any stale cached modules that could shadow the real package
+    sys.modules.pop("scripts", None)
+    sys.modules.pop("scripts.run_scanner", None)
+    sys.modules.pop("run_scanner", None)
+
+    spec = importlib.util.spec_from_file_location(
+        "run_scanner",
+        str(_PROJECT_ROOT / "scripts" / "run_scanner.py"),
+    )
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["run_scanner"] = module
+    spec.loader.exec_module(module)
+    return module.main
 
 
 @app.task(
@@ -72,7 +97,7 @@ def scan_task(self):
     """
     logger.info(f"=== Celery scan_task triggered === request_id={self.request.id}")
     try:
-        from scripts.run_scanner import main
+        main = _load_main()
         main(dry_run=False, top_n=10, skip_events=False)
     except Exception as e:
         logger.error(f"scan_task execution error: {e}")
@@ -94,7 +119,7 @@ def closing_report_task(self):
     """
     logger.info(f"=== Celery closing_report_task triggered === request_id={self.request.id}")
     try:
-        from scripts.run_scanner import main
+        main = _load_main()
         from quant_loom.storage.mysql_client import mysql_client
         from quant_loom.storage.models import StockAlert
         from quant_loom.notification.email_sender import email_sender

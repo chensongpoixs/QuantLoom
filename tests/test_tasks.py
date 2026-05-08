@@ -89,7 +89,8 @@ class TestScanTask:
 
     def test_scan_task_calls_main(self):
         from quant_loom.tasks.scanner_tasks import scan_task
-        with patch("scripts.run_scanner.main") as mock_main:
+        with patch("quant_loom.tasks.scanner_tasks._load_main") as mock_load:
+            mock_main = mock_load.return_value
             # 调用底层函数 (绕过 Celery task 包装)
             scan_task.run()
             mock_main.assert_called_once_with(dry_run=False, top_n=10, skip_events=False)
