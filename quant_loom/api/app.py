@@ -55,6 +55,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse, JSONResponse, FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from loguru import logger
+import quant_loom.ops.logger  # noqa: F401 — 初始化文件日志输出
 from pydantic import BaseModel
 from prometheus_client import generate_latest, CollectorRegistry, REGISTRY
 from sqlalchemy import func, Integer

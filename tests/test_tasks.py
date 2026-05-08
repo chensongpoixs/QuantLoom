@@ -89,11 +89,20 @@ class TestScanTask:
 
     def test_scan_task_calls_main(self):
         from quant_loom.tasks.scanner_tasks import scan_task
-        with patch("quant_loom.tasks.scanner_tasks._load_main") as mock_load:
+        with patch("quant_loom.tasks.scanner_tasks._load_main") as mock_load, \
+             patch("quant_loom.tasks.scanner_tasks.is_trading_time", return_value=True):
             mock_main = mock_load.return_value
             # 调用底层函数 (绕过 Celery task 包装)
             scan_task.run()
             mock_main.assert_called_once_with(dry_run=False, top_n=10, skip_events=False)
+
+    def test_scan_task_skips_outside_trading_hours(self):
+        """非交易时段跳过扫描"""
+        from quant_loom.tasks.scanner_tasks import scan_task
+        with patch("quant_loom.tasks.scanner_tasks._load_main") as mock_load, \
+             patch("quant_loom.tasks.scanner_tasks.is_trading_time", return_value=False):
+            scan_task.run()
+            mock_load.assert_not_called()
 
 
 class TestClosingReportTask:

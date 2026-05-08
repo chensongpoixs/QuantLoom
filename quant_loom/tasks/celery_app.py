@@ -82,6 +82,7 @@ from celery import Celery
 from celery.schedules import crontab
 
 from config.settings import settings
+import quant_loom.ops.logger  # noqa: F401 — 初始化文件日志输出
 
 redis_broker = f"{settings.redis_url}/0"
 redis_backend = f"{settings.redis_url}/1"

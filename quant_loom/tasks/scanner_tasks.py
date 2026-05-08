@@ -45,7 +45,7 @@
 
 import importlib.util
 import sys
-from datetime import datetime
+from datetime import datetime, time
 from pathlib import Path
 
 from loguru import logger
@@ -54,6 +54,20 @@ from quant_loom.tasks.celery_app import app
 
 # 项目根目录 (绝对路径)
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+
+# A 股交易时段 (UTC+8)
+_TRADING_START = time(9, 0)   # 上午 9:00
+_TRADING_END = time(15, 0)    # 下午 15:00
+
+
+def is_trading_time() -> bool:
+    """判断当前是否在 A 股交易时段内 (周一至周五 9:00-15:00 UTC+8)"""
+    now = datetime.now()
+    # 周末跳过
+    if now.weekday() >= 5:  # 5=周六, 6=周日
+        return False
+    # 交易时段判断
+    return _TRADING_START <= now.time() <= _TRADING_END
 
 
 def _load_main():
@@ -90,11 +104,14 @@ def _load_main():
 )
 def scan_task(self):
     """
-    全市场扫描 — 交易时段每 5 分钟触发
+    全市场扫描 — 交易时段每 10 分钟触发 (9:00-15:00 UTC+8, 周一至周五)
 
     Celery 自动重试 (max 2次)，60s 间隔。
     扫描本身幂等 — 去重机制防止同一天内重复告警。
     """
+    if not is_trading_time():
+        logger.debug(f"scan_task skipped: outside trading hours (now={datetime.now().strftime('%a %H:%M')})")
+        return
     logger.info(f"=== Celery scan_task triggered === request_id={self.request.id}")
     try:
         main = _load_main()

@@ -58,6 +58,7 @@ from typing import Optional
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from loguru import logger
+import quant_loom.ops.logger  # noqa: F401 — 初始化文件日志输出
 
 from config.settings import settings
 from quant_loom.data_ingestion.cleaner import DataCleaner
