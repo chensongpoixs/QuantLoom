@@ -109,12 +109,37 @@ class MySQLClient:
         Base.metadata.create_all(self.engine)
         logger.info("MySQL tables created")
 
-    def insert_or_update(self, instance):
-        """插入或更新单条记录，返回 merged instance (含 auto-increment ID)"""
+    def insert_or_update(self, instance, lookup_columns: Optional[list] = None):
+        """插入或更新单条记录，返回 merged instance (含 auto-increment ID)
+
+        lookup_columns: 指定用于查找已有记录的自然键列名列表。
+                       不传则使用 merge() (按主键 id 查找)。
+                       例如 FundFlowDaily 应传 ['code', 'trade_date']。
+        """
         with self.get_session() as s:
-            merged = s.merge(instance)
-            s.flush()
-            return merged
+            if lookup_columns:
+                # 按自然键查找已有记录
+                filters = {col: getattr(instance, col) for col in lookup_columns}
+                existing = s.query(type(instance)).filter_by(**filters).first()
+                if existing is not None:
+                    # 更新已有记录的非主键字段
+                    for col in instance.__table__.columns:
+                        col_name = col.name
+                        if col_name == "id" or col_name in lookup_columns:
+                            continue
+                        new_val = getattr(instance, col_name, None)
+                        if new_val is not None:
+                            setattr(existing, col_name, new_val)
+                    s.flush()
+                    return existing
+                else:
+                    s.add(instance)
+                    s.flush()
+                    return instance
+            else:
+                merged = s.merge(instance)
+                s.flush()
+                return merged
 
     def bulk_insert(self, instances: list) -> None:
         """批量插入"""

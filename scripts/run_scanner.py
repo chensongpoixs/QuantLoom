@@ -286,7 +286,7 @@ def _upsert_daily_fund_flow(fund_flow_df, trade_date: date):
                 main_force_ratio=float(row.get("main_force_ratio", 0) or 0),
                 net_inflow=float(row.get("net_inflow", 0) or 0),
             )
-            mysql_client.insert_or_update(record)
+            mysql_client.insert_or_update(record, lookup_columns=["code", "trade_date"])
             saved += 1
         except Exception as e:
             logger.debug(f"Fund flow write skipped {code}: {e}")
