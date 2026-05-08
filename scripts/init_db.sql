@@ -114,3 +114,53 @@ CREATE TABLE IF NOT EXISTS sq_fund_flow_daily (
     UNIQUE INDEX uk_ffd_code_date (code, trade_date),
     INDEX idx_ffd_date (trade_date)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 8. 回测结果表
+CREATE TABLE IF NOT EXISTS sq_backtest_results (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '自增主键',
+    trade_date DATE NOT NULL COMMENT '交易日期',
+    code VARCHAR(10) NOT NULL COMMENT '股票代码',
+    name VARCHAR(50) COMMENT '股票名称',
+    alert_type VARCHAR(50) COMMENT '异动类型',
+    trigger_reason TEXT COMMENT '触发原因描述',
+    confidence_score DOUBLE COMMENT '规则置信度',
+    pct_change_alert DECIMAL(10, 4) COMMENT '异动当日涨跌幅(%)',
+    main_force_ratio DECIMAL(10, 4) COMMENT '异动当日主力占比(%)',
+    outcome_1d DECIMAL(10, 4) COMMENT 'T+1 涨跌幅(%)',
+    outcome_3d DECIMAL(10, 4) COMMENT 'T+3 涨跌幅(%)',
+    outcome_5d DECIMAL(10, 4) COMMENT 'T+5 涨跌幅(%)',
+    outcome_positive TINYINT(1) COMMENT 'T+3 方向正确',
+    params_hash VARCHAR(64) COMMENT '参数组合 MD5 哈希',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_bktr_date_code (trade_date, code),
+    INDEX idx_bktr_hash (params_hash, trade_date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 9. 告警反馈表
+CREATE TABLE IF NOT EXISTS sq_alert_feedback (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '自增主键',
+    alert_id BIGINT NOT NULL COMMENT '关联告警 ID',
+    feedback_type VARCHAR(20) DEFAULT 'manual' COMMENT '反馈类型: manual/auto',
+    reviewer VARCHAR(50) COMMENT '评审人',
+    verdict VARCHAR(20) COMMENT '评审结论: correct/incorrect/ambiguous',
+    relevance_score DOUBLE COMMENT '相关度评分 0-1',
+    outcome_1d DECIMAL(10, 4) COMMENT '告警 1 日后涨跌幅(%)',
+    outcome_3d DECIMAL(10, 4) COMMENT '告警 3 日后涨跌幅(%)',
+    outcome_5d DECIMAL(10, 4) COMMENT '告警 5 日后涨跌幅(%)',
+    notes TEXT COMMENT '备注',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_af_alert_id (alert_id),
+    INDEX idx_af_verdict (verdict)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 10. 持仓明细表
+CREATE TABLE IF NOT EXISTS sq_portfolio (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '自增主键',
+    code VARCHAR(10) NOT NULL COMMENT '股票代码',
+    name VARCHAR(50) COMMENT '股票名称',
+    shares INT NOT NULL DEFAULT 0 COMMENT '持仓股数',
+    cost_price DECIMAL(10, 4) COMMENT '成本价',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    UNIQUE INDEX uk_port_code (code)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

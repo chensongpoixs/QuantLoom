@@ -1,0 +1,22 @@
+{
+  "name": "QuantLoom·量梭 — 机构资金监控",
+  "short_name": "量梭",
+  "description": "A-share institutional capital flow anomaly detection and early warning system",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#2563eb",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

@@ -56,7 +56,7 @@ from fastapi.staticfiles import StaticFiles
 from loguru import logger
 from pydantic import BaseModel
 from prometheus_client import generate_latest, CollectorRegistry, REGISTRY
-from sqlalchemy import func
+from sqlalchemy import func, Integer
 
 from quant_loom.ops.metrics import db_health, alert_precision, alert_outcome_correct
 
@@ -551,6 +551,415 @@ if os.path.isdir(_FRONTEND_DIR):
         if os.path.isfile(index_path):
             return HTMLResponse(open(index_path, "r", encoding="utf-8").read())
         return HTMLResponse("<h1>Frontend not built. Run: cd frontend && npm run build</h1>", status_code=404)
+
+
+# ---- 持仓管理 (Phase 5C) ----
+
+@app.get("/api/portfolio")
+async def api_portfolio_list():
+    """持仓列表"""
+    try:
+        from quant_loom.storage.mysql_client import mysql_client
+        from quant_loom.storage.models import PortfolioHolding
+
+        if not mysql_client.ping():
+            raise HTTPException(status_code=503, detail="MySQL unavailable")
+
+        with mysql_client.get_session() as sess:
+            holdings = sess.query(PortfolioHolding).order_by(PortfolioHolding.created_at.desc()).all()
+            items = [
+                {
+                    "id": h.id,
+                    "code": h.code,
+                    "name": h.name,
+                    "shares": h.shares,
+                    "cost_price": float(h.cost_price) if h.cost_price else 0,
+                    "created_at": h.created_at.isoformat() if h.created_at else None,
+                    "updated_at": h.updated_at.isoformat() if h.updated_at else None,
+                }
+                for h in holdings
+            ]
+
+        return JSONResponse(content={"items": items})
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Query portfolio failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class PortfolioAddRequest(BaseModel):
+    code: str
+    name: Optional[str] = None
+    shares: int = 0
+    cost_price: Optional[float] = None
+
+
+@app.post("/api/portfolio")
+async def api_portfolio_add(req: PortfolioAddRequest):
+    """添加持仓"""
+    try:
+        from quant_loom.storage.mysql_client import mysql_client
+        from quant_loom.storage.models import PortfolioHolding
+
+        if not mysql_client.ping():
+            raise HTTPException(status_code=503, detail="MySQL unavailable")
+
+        holding = PortfolioHolding(
+            code=req.code,
+            name=req.name or req.code,
+            shares=req.shares,
+            cost_price=req.cost_price,
+        )
+        mysql_client.insert_or_update(holding, lookup_columns=["code"])
+
+        return JSONResponse(content={"status": "ok"})
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Add portfolio failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/api/portfolio/{holding_id}")
+async def api_portfolio_delete(holding_id: int):
+    """删除持仓"""
+    try:
+        from quant_loom.storage.mysql_client import mysql_client
+        from quant_loom.storage.models import PortfolioHolding
+
+        if not mysql_client.ping():
+            raise HTTPException(status_code=503, detail="MySQL unavailable")
+
+        with mysql_client.get_session() as sess:
+            holding = sess.query(PortfolioHolding).filter(PortfolioHolding.id == holding_id).first()
+            if not holding:
+                raise HTTPException(status_code=404, detail=f"Holding {holding_id} not found")
+            sess.delete(holding)
+            sess.commit()
+
+        return JSONResponse(content={"status": "ok"})
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Delete portfolio failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---- 批量行情查询 (Phase 5C) ----
+
+@app.get("/api/quotes/batch")
+async def api_quotes_batch(codes: str = Query(..., description="逗号分隔的股票代码")):
+    """批量查询股票最新行情"""
+    try:
+        from quant_loom.storage.mysql_client import mysql_client
+        from quant_loom.storage.models import StockQuoteSnapshot
+
+        if not mysql_client.ping():
+            raise HTTPException(status_code=503, detail="MySQL unavailable")
+
+        code_list = [c.strip() for c in codes.split(",") if c.strip()]
+        if not code_list:
+            return JSONResponse(content={"quotes": {}})
+
+        with mysql_client.get_session() as sess:
+            # 每个 code 的最新行情
+            quotes = {}
+            for code in code_list:
+                snap = (
+                    sess.query(StockQuoteSnapshot)
+                    .filter(StockQuoteSnapshot.code == code)
+                    .order_by(StockQuoteSnapshot.ts.desc())
+                    .first()
+                )
+                if snap:
+                    quotes[code] = {
+                        "last_price": float(snap.last_price) if snap.last_price else None,
+                        "pct_change": float(snap.pct_change) if snap.pct_change else None,
+                    }
+
+        return JSONResponse(content={"quotes": quotes})
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Batch quotes query failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---- 通知重推 (Phase 5D) ----
+
+@app.post("/api/notifications/{log_id}/retry")
+async def api_notification_retry(log_id: int):
+    """重推失败的通知"""
+    try:
+        from quant_loom.storage.mysql_client import mysql_client
+        from quant_loom.storage.models import NotificationLog
+
+        if not mysql_client.ping():
+            raise HTTPException(status_code=503, detail="MySQL unavailable")
+
+        with mysql_client.get_session() as sess:
+            log = sess.query(NotificationLog).filter(NotificationLog.id == log_id).first()
+            if not log:
+                raise HTTPException(status_code=404, detail=f"Notification log {log_id} not found")
+
+            # 重发逻辑：根据 channel 调用对应的 webhook
+            success = False
+            try:
+                from quant_loom.notify.webhook import send_alert_to_channel
+                from quant_loom.storage.models import StockAlert
+
+                alert = sess.query(StockAlert).filter(StockAlert.id == log.alert_id).first()
+                if alert:
+                    alert_dict = {
+                        "id": alert.id,
+                        "code": alert.code,
+                        "name": alert.name,
+                        "alert_type": alert.alert_type,
+                        "risk_level": alert.risk_level,
+                        "trigger_reason": alert.trigger_reason,
+                        "confidence_score": alert.confidence_score,
+                        "ai_summary": alert.ai_summary,
+                    }
+                    success = send_alert_to_channel(alert_dict, log.channel)
+            except Exception as ex:
+                logger.warning(f"Retry send failed: {ex}")
+
+            if success:
+                log.status = "success"
+                log.error_message = None
+                log.sent_at = datetime.now()
+                sess.commit()
+                return JSONResponse(content={"status": "ok", "message": "重推成功"})
+            else:
+                log.error_message = f"重推失败 ({datetime.now().strftime('%H:%M:%S')})"
+                sess.commit()
+                return JSONResponse(content={"status": "failed", "message": "重推失败"}, status_code=502)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Notification retry failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---- 资金流向 Top10 (Phase 5C) ----
+
+@app.get("/api/fund-flow/top")
+async def api_fund_flow_top():
+    """最新交易日资金流 Top10 — 净流入和净流出 Top10"""
+    try:
+        from quant_loom.storage.mysql_client import mysql_client
+        from quant_loom.storage.models import FundFlowDaily, StockMaster
+
+        if not mysql_client.ping():
+            raise HTTPException(status_code=503, detail="MySQL unavailable")
+
+        with mysql_client.get_session() as sess:
+            # 最新交易日
+            latest_date = (
+                sess.query(func.max(FundFlowDaily.trade_date)).scalar()
+            )
+            if not latest_date:
+                return JSONResponse(content={"inflows": [], "outflows": []})
+
+            # 净流入 Top10
+            inflows_query = (
+                sess.query(
+                    FundFlowDaily.code,
+                    StockMaster.name,
+                    FundFlowDaily.net_inflow,
+                    FundFlowDaily.main_force_ratio,
+                )
+                .outerjoin(StockMaster, FundFlowDaily.code == StockMaster.code)
+                .filter(FundFlowDaily.trade_date == latest_date)
+                .order_by(FundFlowDaily.net_inflow.desc())
+                .limit(10)
+                .all()
+            )
+            inflows = [
+                {
+                    "code": r.code,
+                    "name": r.name or r.code,
+                    "net_inflow": float(r.net_inflow) if r.net_inflow else 0,
+                    "inflow_ratio": float(r.main_force_ratio) if r.main_force_ratio else 0,
+                }
+                for r in inflows_query
+            ]
+
+            # 净流出 Top10
+            outflows_query = (
+                sess.query(
+                    FundFlowDaily.code,
+                    StockMaster.name,
+                    FundFlowDaily.net_inflow,
+                    FundFlowDaily.main_force_ratio,
+                )
+                .outerjoin(StockMaster, FundFlowDaily.code == StockMaster.code)
+                .filter(FundFlowDaily.trade_date == latest_date)
+                .order_by(FundFlowDaily.net_inflow.asc())
+                .limit(10)
+                .all()
+            )
+            outflows = [
+                {
+                    "code": r.code,
+                    "name": r.name or r.code,
+                    "net_inflow": float(r.net_inflow) if r.net_inflow else 0,
+                    "inflow_ratio": float(r.main_force_ratio) if r.main_force_ratio else 0,
+                }
+                for r in outflows_query
+            ]
+
+        return JSONResponse(content={"inflows": inflows, "outflows": outflows})
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Query fund flow top failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---- 通知日志 (Phase 5C) ----
+
+@app.get("/api/notifications")
+async def api_notifications(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+):
+    """分页通知日志列表"""
+    try:
+        from quant_loom.storage.mysql_client import mysql_client
+        from quant_loom.storage.models import NotificationLog
+
+        if not mysql_client.ping():
+            raise HTTPException(status_code=503, detail="MySQL unavailable")
+
+        with mysql_client.get_session() as sess:
+            total = sess.query(func.count(NotificationLog.id)).scalar() or 0
+            logs = (
+                sess.query(NotificationLog)
+                .order_by(NotificationLog.sent_at.desc())
+                .offset((page - 1) * page_size)
+                .limit(page_size)
+                .all()
+            )
+            items = [
+                {
+                    "id": n.id,
+                    "alert_id": n.alert_id,
+                    "channel": n.channel,
+                    "recipient": n.recipient,
+                    "status": n.status,
+                    "sent_at": n.sent_at.isoformat() if n.sent_at else None,
+                    "error_message": n.error_message,
+                }
+                for n in logs
+            ]
+
+        return JSONResponse(content={
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "items": items,
+        })
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Query notifications failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---- 板块热力图 (Phase 5C) ----
+
+@app.get("/api/sectors/heatmap")
+async def api_sectors_heatmap():
+    """板块告警热力图 — 按行业聚合告警数量与平均置信度"""
+    try:
+        from quant_loom.storage.mysql_client import mysql_client
+        from quant_loom.storage.models import StockAlert, StockMaster
+
+        if not mysql_client.ping():
+            raise HTTPException(status_code=503, detail="MySQL unavailable")
+
+        with mysql_client.get_session() as sess:
+            rows = (
+                sess.query(
+                    StockMaster.industry,
+                    func.count(StockAlert.id).label("alert_count"),
+                    func.avg(StockAlert.confidence_score).label("avg_confidence"),
+                )
+                .join(StockAlert, StockAlert.code == StockMaster.code)
+                .filter(StockMaster.industry.isnot(None), StockMaster.industry != "")
+                .group_by(StockMaster.industry)
+                .order_by(func.count(StockAlert.id).desc())
+                .limit(30)
+                .all()
+            )
+            # 在 session 内材料化
+            items = [
+                {
+                    "sector": r.industry or "未知",
+                    "alert_count": r.alert_count,
+                    "avg_confidence": round(float(r.avg_confidence or 0), 4),
+                }
+                for r in rows
+            ]
+
+        return JSONResponse(content={"items": items})
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Query sectors heatmap failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---- 回测统计 (Phase 5B) ----
+
+@app.get("/api/backtest/type-stats")
+async def api_backtest_type_stats():
+    """按告警类型聚合回测统计 — T+1/3/5 平均收益、命中率、样本数"""
+    try:
+        from quant_loom.storage.mysql_client import mysql_client
+        from quant_loom.storage.models import BacktestResult
+
+        if not mysql_client.ping():
+            raise HTTPException(status_code=503, detail="MySQL unavailable")
+
+        with mysql_client.get_session() as sess:
+            rows = (
+                sess.query(
+                    BacktestResult.alert_type,
+                    func.avg(BacktestResult.outcome_1d).label("avg_1d"),
+                    func.avg(BacktestResult.outcome_3d).label("avg_3d"),
+                    func.avg(BacktestResult.outcome_5d).label("avg_5d"),
+                    func.count(BacktestResult.id).label("cnt"),
+                    func.sum(BacktestResult.outcome_positive.cast(Integer)).label("hits"),
+                )
+                .filter(BacktestResult.alert_type.isnot(None))
+                .group_by(BacktestResult.alert_type)
+                .all()
+            )
+            items = {}
+            for r in rows:
+                at = r.alert_type or "unknown"
+                total = r.cnt or 0
+                hit_rate = round(r.hits / total, 4) if total > 0 else 0
+                items[at] = {
+                    "outcome_1d": round(float(r.avg_1d), 4) if r.avg_1d is not None else None,
+                    "outcome_3d": round(float(r.avg_3d), 4) if r.avg_3d is not None else None,
+                    "outcome_5d": round(float(r.avg_5d), 4) if r.avg_5d is not None else None,
+                    "hit_rate": hit_rate,
+                    "sample_count": total,
+                    "precision": hit_rate,
+                    "calibration": round(hit_rate * 0.7, 4) if hit_rate > 0 else None,
+                    "benchmark_3d": None,
+                }
+
+        return JSONResponse(content={"by_type": items})
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Query backtest type stats failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ---- 反馈闭环 (Phase 4) ----

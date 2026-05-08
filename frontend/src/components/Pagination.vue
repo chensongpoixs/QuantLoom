@@ -4,7 +4,7 @@
     <button :disabled="modelValue <= 1" @click="$emit('update:modelValue', modelValue - 1)">‹</button>
 
     <template v-for="p in visiblePages" :key="p">
-      <button v-if="p !== '...'" :class="{ active: p === modelValue }" @click="$emit('update:modelValue', p)">
+      <button v-if="p !== '...'" :class="{ active: p === modelValue }" @click="$emit('update:modelValue', (p as number))">
         {{ p }}
       </button>
       <span v-else class="page-info">...</span>
@@ -55,3 +55,45 @@ const visiblePages = computed(() => {
   return pages
 })
 </script>
+
+<style scoped>
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin-top: 20px;
+  flex-wrap: wrap;
+}
+
+.pagination button {
+  padding: 8px 14px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.pagination button:hover:not(:disabled) {
+  background: var(--accent-blue-light);
+  border-color: var(--accent-blue);
+  color: var(--accent-blue);
+}
+.pagination button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.pagination button.active {
+  background: var(--accent-blue);
+  color: #fff;
+  border-color: var(--accent-blue);
+}
+
+.page-info {
+  padding: 8px 12px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+</style>

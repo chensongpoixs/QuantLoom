@@ -231,6 +231,24 @@ class BacktestResult(Base):
     )
 
 
+class PortfolioHolding(Base):
+    """持仓明细表"""
+
+    __tablename__ = "sq_portfolio"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    code = Column(String(10), nullable=False, comment="股票代码")
+    name = Column(String(50), comment="股票名称")
+    shares = Column(Integer, nullable=False, default=0, comment="持仓股数")
+    cost_price = Column(Numeric(10, 4), comment="成本价")
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+    __table_args__ = (
+        Index("uk_port_code", "code", unique=True),
+    )
+
+
 class AlertFeedback(Base):
     """告警反馈表 — 人工复核 + 自动结果回填"""
 

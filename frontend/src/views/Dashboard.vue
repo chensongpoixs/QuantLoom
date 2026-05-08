@@ -6,21 +6,41 @@
     </div>
 
     <!-- Stats Grid -->
-    <div v-if="store.summaryLoading && !store.summary">
-      <div class="stats-grid">
-        <div class="stat-card" v-for="i in 4" :key="i">
-          <div class="skeleton" style="height:20px;width:60%;margin-bottom:12px"></div>
-          <div class="skeleton" style="height:36px;width:40%"></div>
-        </div>
-      </div>
+    <ErrorBanner :message="dashStore.error" @retry="dashStore.fetchSummary()" />
+    <div v-if="dashStore.summaryLoading && !dashStore.summary" class="stats-grid">
+      <SkeletonLoader v-for="i in 4" :key="i" variant="card" />
     </div>
-    <StatsGrid v-else :stats="store.summary" />
+    <StatsGrid v-else :stats="dashStore.summary" />
 
     <!-- Trend Chart -->
     <div class="section">
       <div class="section-title">告警趋势（近7天）</div>
-      <div v-if="store.trendLoading && !store.trend" class="skeleton" style="height:320px"></div>
-      <TrendChart v-else :data="store.trend" />
+      <SkeletonLoader v-if="dashStore.trendLoading && !dashStore.trend" variant="chart" />
+      <TrendChart v-else :data="dashStore.trend" :variant="isMobile ? 'sparkline' : 'full'" />
+    </div>
+
+    <!-- Fund Flow Top10 -->
+    <div class="section">
+      <div class="section-title">主力资金流向 Top10</div>
+      <SkeletonLoader v-if="dashStore.fundFlowLoading && !dashStore.fundFlow" variant="chart" />
+      <FundFlowBar
+        v-else-if="dashStore.fundFlow"
+        :inflows="dashStore.fundFlow.inflows"
+        :outflows="dashStore.fundFlow.outflows"
+      />
+      <div v-else class="empty-state" style="padding:40px">
+        <div class="empty-text">暂无资金流数据。</div>
+      </div>
+    </div>
+
+    <!-- Sector Heatmap -->
+    <div class="section">
+      <div class="section-title">板块异动热力图</div>
+      <SkeletonLoader v-if="dashStore.sectorsLoading && !dashStore.sectors.length" variant="chart" />
+      <SectorHeatmap v-else-if="dashStore.sectors.length" :data="dashStore.sectors" />
+      <div v-else class="empty-state" style="padding:40px">
+        <div class="empty-text">暂无板块数据。</div>
+      </div>
     </div>
 
     <!-- Top Alerts -->
@@ -30,7 +50,7 @@
         <router-link to="/alerts" style="margin-left:auto;font-size:0.85rem;font-weight:400">查看全部 →</router-link>
       </div>
 
-      <div v-if="store.loading" class="spinner">加载中...</div>
+      <div v-if="alertsStore.loading" class="spinner">加载中...</div>
 
       <table v-else-if="topAlerts.length" class="top-alerts-table">
         <thead>
@@ -47,21 +67,10 @@
           <tr v-for="a in topAlerts" :key="a.id" @click="$router.push(`/alerts/${a.id}`)">
             <td><strong>{{ a.code }}</strong></td>
             <td>{{ a.name }}</td>
-            <td>{{ typeLabel(a.alert_type) }}</td>
-            <td>
-              <div class="confidence-bar" style="width:80px">
-                <span class="bar-track">
-                  <span
-                    class="bar-fill"
-                    :class="a.confidence_score >= 0.7 ? 'high' : a.confidence_score >= 0.4 ? 'medium' : 'low'"
-                    :style="{ width: (a.confidence_score || 0) * 100 + '%' }"
-                  ></span>
-                </span>
-                <span class="bar-val">{{ ((a.confidence_score || 0) * 100).toFixed(0) }}%</span>
-              </div>
-            </td>
+            <td>{{ ALERT_TYPE_LABELS[a.alert_type || ''] || a.alert_type }}</td>
+            <td><ConfidenceGauge :score="a.confidence_score || 0" size="sm" /></td>
             <td><RiskBadge :level="a.risk_level" /></td>
-            <td style="font-size:0.8rem;color:var(--text-muted)">{{ fmtTs(a.ts) }}</td>
+            <td style="font-size:0.8rem;color:var(--text-muted)">{{ formatTime(a.ts) }}</td>
           </tr>
         </tbody>
       </table>
@@ -75,45 +84,81 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useAlertsStore } from '@/stores/alerts'
+import { useDashboardStore } from '@/stores/dashboard'
+import { ALERT_TYPE_LABELS, formatTime } from '@/utils'
 import StatsGrid from '@/components/StatsGrid.vue'
 import TrendChart from '@/components/TrendChart.vue'
 import RiskBadge from '@/components/RiskBadge.vue'
+import ErrorBanner from '@/components/ErrorBanner.vue'
+import SkeletonLoader from '@/components/SkeletonLoader.vue'
+import ConfidenceGauge from '@/components/ConfidenceGauge.vue'
+import FundFlowBar from '@/components/FundFlowBar.vue'
+import SectorHeatmap from '@/components/SectorHeatmap.vue'
 
-const store = useAlertsStore()
+const alertsStore = useAlertsStore()
+const dashStore = useDashboardStore()
+
+// Mobile detection for sparkline chart variant
+const isMobile = ref(window.innerWidth < 768)
+function onResize() {
+  isMobile.value = window.innerWidth < 768
+}
+window.addEventListener('resize', onResize)
+onUnmounted(() => window.removeEventListener('resize', onResize))
 
 const topAlerts = computed(() => {
-  return [...store.alerts]
+  return [...alertsStore.alerts]
     .sort((a, b) => (b.confidence_score || 0) - (a.confidence_score || 0))
-    .slice(0, 5)
+    .slice(0, 10)
 })
 
-function fmtTs(ts: string | null) {
-  if (!ts) return ''
-  const d = new Date(ts)
-  return `${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`
-}
-
-const ALERT_TYPE_LABELS: Record<string, string> = {
-  breakout: '放量上攻',
-  accumulation: '底部吸筹',
-  tail_chasing: '尾盘抢筹',
-  event_driven: '事件驱动',
-  sector_linked: '板块联动',
-}
-function typeLabel(t: string | null) {
-  if (!t) return '--'
-  return ALERT_TYPE_LABELS[t] || t
-}
 
 async function refresh() {
   await Promise.all([
-    store.fetchSummary(),
-    store.fetchTrend(7),
-    store.fetchAlerts(),
+    dashStore.fetchSummary(),
+    dashStore.fetchTrend(7),
+    dashStore.fetchSectors(),
+    dashStore.fetchFundFlow(),
+    alertsStore.fetchAlerts(),
   ])
 }
 
 onMounted(refresh)
 </script>
+
+<style scoped>
+.top-alerts-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.top-alerts-table th,
+.top-alerts-table td {
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--border-light);
+  font-size: 0.85rem;
+}
+.top-alerts-table th {
+  color: var(--text-secondary);
+  font-weight: 600;
+  background: var(--bg-secondary);
+}
+.top-alerts-table tr {
+  cursor: pointer;
+  transition: background var(--transition);
+}
+.top-alerts-table tr:hover td {
+  background: var(--bg-hover);
+}
+
+@media (max-width: 767px) {
+  .top-alerts-table th:nth-child(3),
+  .top-alerts-table td:nth-child(3),
+  .top-alerts-table th:nth-child(5),
+  .top-alerts-table td:nth-child(5) {
+    display: none;
+  }
+}
+</style>
