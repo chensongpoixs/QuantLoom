@@ -19,8 +19,8 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     error.value = null
     try {
       const data = (await api.get('/portfolio')) as { items: PortfolioHolding[] }
-      holdings.value = data.items
-      if (data.items.length) await fetchQuotes(data.items.map((h) => h.code))
+      holdings.value = data?.items ?? []
+      if (holdings.value.length) await fetchQuotes(holdings.value.map((h) => h.code))
     } catch (e: unknown) {
       error.value = (e as Error).message || 'Failed to fetch portfolio'
     } finally {
@@ -32,7 +32,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     if (!codes.length) return
     try {
       const data = (await api.get('/quotes/batch', { params: { codes: codes.join(',') } })) as { quotes: Record<string, QuoteData> }
-      quotes.value = data.quotes
+      quotes.value = data?.quotes ?? {}
     } catch {
       // quotes optional
     }

@@ -41,8 +41,8 @@ export const useAlertsStore = defineStore('alerts', () => {
       if (filterEnd.value) params.end_date = filterEnd.value
 
       const data = (await api.get('/alerts', { params })) as { items: Alert[]; total: number }
-      alerts.value = data.items
-      total.value = data.total
+      alerts.value = data?.items ?? []
+      total.value = data?.total ?? 0
     } catch (e: unknown) {
       error.value = (e as Error).message || 'Failed to fetch alerts'
     } finally {

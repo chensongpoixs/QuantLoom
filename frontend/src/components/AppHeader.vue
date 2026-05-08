@@ -72,7 +72,7 @@ let prevAlertTotal = 0
 async function pollNotifications() {
   try {
     const data = (await api.get('/notifications', { params: { page_size: 1 } })) as { total: number }
-    newNotifCount.value = data.total
+    newNotifCount.value = data?.total ?? 0
   } catch {
     // silent fail
   }
@@ -83,13 +83,13 @@ async function checkNewAlerts() {
     const data = (await api.get('/alerts', { params: { page_size: 1, risk_level: 'P1' } })) as {
       total: number
     }
-    if (prevAlertTotal > 0 && data.total > prevAlertTotal) {
+    if (data && prevAlertTotal > 0 && data.total > prevAlertTotal) {
       newP1Count.value = data.total - prevAlertTotal
       showAlertBanner.value = true
       // Auto-dismiss after 8 seconds
       setTimeout(() => { showAlertBanner.value = false }, 8000)
     }
-    prevAlertTotal = data.total
+    if (data) prevAlertTotal = data.total
   } catch {
     // silent
   }

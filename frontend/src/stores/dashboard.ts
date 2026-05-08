@@ -48,7 +48,7 @@ export const useDashboardStore = defineStore('dashboard', () => {
     sectorsLoading.value = true
     try {
       const data = (await api.get('/sectors/heatmap')) as { items: SectorHeatmapItem[] }
-      sectors.value = data.items
+      sectors.value = data?.items ?? []
     } catch (e: unknown) {
       error.value = (e as Error).message || 'Failed to fetch sectors'
     } finally {

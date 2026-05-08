@@ -109,7 +109,8 @@ window.addEventListener('resize', onResize)
 onUnmounted(() => window.removeEventListener('resize', onResize))
 
 const topAlerts = computed(() => {
-  return [...alertsStore.alerts]
+  const list = alertsStore.alerts ?? []
+  return [...list]
     .sort((a, b) => (b.confidence_score || 0) - (a.confidence_score || 0))
     .slice(0, 10)
 })

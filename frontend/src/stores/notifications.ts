@@ -18,8 +18,8 @@ export const useNotificationsStore = defineStore('notifications', () => {
       const data = (await api.get('/notifications', {
         params: { page: page.value, page_size: pageSize.value },
       })) as { items: NotificationLog[]; total: number }
-      items.value = data.items
-      total.value = data.total
+      items.value = data?.items ?? []
+      total.value = data?.total ?? 0
     } catch (e: unknown) {
       error.value = (e as Error).message || 'Failed to fetch notifications'
     } finally {

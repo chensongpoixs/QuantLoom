@@ -538,7 +538,7 @@ if os.path.isdir(_FRONTEND_DIR):
             return FileResponse(file_path)
         return handler
 
-    for _filename in ("config.js", "vite.svg", "favicon.ico"):
+    for _filename in ("config.js", "vite.svg", "favicon.ico", "manifest.json", "sw.js"):
         _file_path = os.path.join(_FRONTEND_DIR, _filename)
         if os.path.isfile(_file_path):
             app.get(f"/{_filename}")(_make_static_handler(_file_path))
