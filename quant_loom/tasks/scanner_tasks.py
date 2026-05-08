@@ -43,11 +43,18 @@
 由 Beat 定时触发，执行全市场扫描管线。
 """
 
+import sys
 from datetime import datetime
+from pathlib import Path
 
 from loguru import logger
 
 from quant_loom.tasks.celery_app import app
+
+# 确保项目根目录在 Python path 中 (Celery worker 可能不包含)
+_PROJECT_ROOT = str(Path(__file__).resolve().parent.parent.parent)
+if _PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, _PROJECT_ROOT)
 
 
 @app.task(

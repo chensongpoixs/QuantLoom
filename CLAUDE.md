@@ -121,9 +121,12 @@ python scripts/run_scanner.py --dry-run    # scan only, no DB writes
 python scripts/run_scanner.py --skip-events # skip event fetching
 
 # --- Scheduled run (Celery) ---
+# Linux:
 celery -A quant_loom.tasks.celery_app worker -l info --concurrency=2 &
+# Windows (must use --pool=threads, spawn pool incompatible with billiard):
+celery -A quant_loom.tasks.celery_app worker -l info --pool=threads --concurrency=2
 celery -A quant_loom.tasks.celery_app beat -l info &
-# Or via scripts:
+# Or via scripts (Linux only):
 bash scripts/start_worker.sh
 bash scripts/start_beat.sh
 

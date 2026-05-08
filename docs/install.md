@@ -267,12 +267,24 @@ window.__QUANTLOOM_CONFIG__ = {
 
 ### 6.4 定时调度 (Celery)
 
+**Linux / WSL：**
+
 ```bash
-# 启动 Worker
+# 启动 Worker (Linux 默认 prefork 池)
 celery -A quant_loom.tasks.celery_app worker -l info --concurrency=2 &
 
 # 启动 Beat 定时器
 celery -A quant_loom.tasks.celery_app beat -l info &
+```
+
+**Windows：**
+
+```powershell
+# Windows 必须使用 --pool=threads（spawn 进程池与 billiard 序列化不兼容）
+celery -A quant_loom.tasks.celery_app worker -l info --pool=threads --concurrency=2
+
+# 另一个终端
+celery -A quant_loom.tasks.celery_app beat -l info
 ```
 
 定时任务：
@@ -354,9 +366,12 @@ cd frontend && npm run dev          # 开发模式
 cd frontend && npm run build        # 构建生产环境
 cd frontend && npm run preview      # 预览构建结果
 
-# ---- Celery ----
+# ---- Celery (Linux) ----
 celery -A quant_loom.tasks.celery_app worker -l info --concurrency=2 &
 celery -A quant_loom.tasks.celery_app beat -l info &
+
+# ---- Celery (Windows) ----
+celery -A quant_loom.tasks.celery_app worker -l info --pool=threads --concurrency=2
 
 # ---- 测试 ----
 pytest tests/ -v                              # 全部测试

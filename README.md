@@ -178,13 +178,15 @@ python scripts/run_scanner.py --skip-events
 ### 5. 定时调度 (Celery)
 
 ```bash
-# 启动 Worker
+# Linux — 启动 Worker (prefork 池)
 bash scripts/start_worker.sh
 # 或: celery -A quant_loom.tasks.celery_app worker -l info --concurrency=2
 
-# 启动 Beat 定时器
-bash scripts/start_beat.sh
-# 或: celery -A quant_loom.tasks.celery_app beat -l info
+# Windows — 启动 Worker (必须用 --pool=threads)
+celery -A quant_loom.tasks.celery_app worker -l info --pool=threads --concurrency=2
+
+# 启动 Beat 定时器 (Linux / Windows 通用)
+celery -A quant_loom.tasks.celery_app beat -l info
 ```
 
 ### 6. API 服务
