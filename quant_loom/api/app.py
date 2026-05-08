@@ -44,6 +44,7 @@ Usage:
   uvicorn quant_loom.api.app:app --host 0.0.0.0 --port 9090
 """
 
+import json
 import os
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
@@ -517,6 +518,83 @@ async def api_stocks_search(
         raise
     except Exception as e:
         logger.error(f"Stock search failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---- AI 每日洞察 (Phase 5E) ----
+
+@app.get("/api/analysis/daily")
+async def api_analysis_daily(limit: int = Query(10, ge=1, le=20)):
+    """今日 AI 分析 Top10 — 返回置信度最高的已分析告警"""
+    try:
+        from quant_loom.storage.mysql_client import mysql_client
+        from quant_loom.storage.models import StockAlert
+        from datetime import datetime
+
+        if not mysql_client.ping():
+            raise HTTPException(status_code=503, detail="MySQL unavailable")
+
+        today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+
+        with mysql_client.get_session() as sess:
+            # 今日总告警数
+            total_today = (
+                sess.query(func.count(StockAlert.id))
+                .filter(StockAlert.ts >= today_start)
+                .scalar()
+            ) or 0
+
+            # 今日有 AI 分析的告警数 + Top-N 列表
+            base_q = sess.query(StockAlert).filter(
+                StockAlert.ts >= today_start,
+                StockAlert.ai_summary.isnot(None),
+                StockAlert.ai_summary != "",
+            )
+
+            analyzed_count = base_q.count()
+
+            # MySQL 不支持 NULLS LAST，用 coalesce(score, 0) 替代
+            top_alerts = (
+                base_q.order_by(func.coalesce(StockAlert.confidence_score, 0).desc())
+                .limit(limit)
+                .all()
+            )
+
+            items = []
+            for a in top_alerts:
+                item = {
+                    "id": a.id,
+                    "ts": a.ts.isoformat() if a.ts else None,
+                    "code": a.code,
+                    "name": a.name,
+                    "alert_type": a.alert_type,
+                    "risk_level": a.risk_level,
+                    "confidence_score": a.confidence_score,
+                    "pct_change": float(a.pct_change) if a.pct_change else None,
+                    "turnover_amount": float(a.turnover_amount) if a.turnover_amount else None,
+                    "trigger_reason": a.trigger_reason,
+                    "ai_summary": a.ai_summary,
+                }
+                # ai_evidence is JSON type — SQLAlchemy may return dict or str
+                ev = a.ai_evidence
+                if isinstance(ev, str):
+                    try:
+                        item["ai_evidence"] = json.loads(ev)
+                    except (json.JSONDecodeError, TypeError):
+                        item["ai_evidence"] = None
+                else:
+                    item["ai_evidence"] = ev
+                items.append(item)
+
+        return JSONResponse(content={
+            "total_today": total_today,
+            "analyzed_count": analyzed_count,
+            "items": items,
+        })
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Daily analysis query failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

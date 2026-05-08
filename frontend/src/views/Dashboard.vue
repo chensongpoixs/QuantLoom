@@ -5,6 +5,9 @@
       <button class="btn-refresh" @click="refresh">刷新</button>
     </div>
 
+    <!-- AI Daily Analysis -->
+    <DailyAnalysis />
+
     <!-- Stats Grid -->
     <ErrorBanner :message="dashStore.error" @retry="dashStore.fetchSummary()" />
     <div v-if="dashStore.summaryLoading && !dashStore.summary" class="stats-grid">
@@ -96,6 +99,7 @@ import SkeletonLoader from '@/components/SkeletonLoader.vue'
 import ConfidenceGauge from '@/components/ConfidenceGauge.vue'
 import FundFlowBar from '@/components/FundFlowBar.vue'
 import SectorHeatmap from '@/components/SectorHeatmap.vue'
+import DailyAnalysis from '@/components/DailyAnalysis.vue'
 
 const alertsStore = useAlertsStore()
 const dashStore = useDashboardStore()
