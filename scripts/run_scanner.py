@@ -218,8 +218,6 @@ def main(dry_run: bool = False, top_n: int = 10, skip_events: bool = False):
         logger.info("[7/7] Writing to database...")
         saved = 0
         for alert in all_alerts:
-            if not alert.get("ai_summary"):
-                continue
             record = StockAlert(
                 ts=alert.get("ts", datetime.now()),
                 code=alert.get("code", ""),

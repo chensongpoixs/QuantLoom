@@ -117,9 +117,9 @@ class Settings(BaseSettings):
 
     @property
     def redis_url(self) -> str:
-        """Redis 连接串"""
+        """Redis 连接串 (不含 DB 编号，由调用方追加)"""
         pw = f":{self.redis_password}@" if self.redis_password else ""
-        return f"redis://{pw}{self.redis_host}:{self.redis_port}/{self.redis_db}"
+        return f"redis://{pw}{self.redis_host}:{self.redis_port}"
 
     @property
     def ai_enabled(self) -> bool:

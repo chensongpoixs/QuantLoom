@@ -280,14 +280,17 @@ def _calibrate_confidence_scores(formatted: list) -> None:
     try:
         from quant_loom.storage.mysql_client import mysql_client
         from quant_loom.storage.models import AlertFeedback
-        from sqlalchemy import func
+        from sqlalchemy import func, inspect
 
         if not mysql_client.ping():
             return
 
+        # 检查表是否存在，避免 session 内抛异常触发 rollback 日志
+        insp = inspect(mysql_client.engine)
+        if 'sq_alert_feedback' not in insp.get_table_names():
+            return
+
         with mysql_client.get_session() as sess:
-            # 查询各 alert_type 的历史精度
-            type_precision = {}
             rows = (
                 sess.query(
                     AlertFeedback.verdict,
