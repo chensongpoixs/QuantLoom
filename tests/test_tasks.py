@@ -57,7 +57,7 @@ class TestCeleryApp:
         schedule = app.conf.beat_schedule
         assert "market-hours-scan" in schedule
         assert schedule["market-hours-scan"]["task"] == "quant_loom.tasks.scanner_tasks.scan_task"
-        assert schedule["market-hours-scan"]["schedule"] == 300.0  # 5 min
+        assert schedule["market-hours-scan"]["schedule"] == 600.0  # 10 min
 
     def test_beat_schedule_has_closing_report(self):
         from quant_loom.tasks.celery_app import app

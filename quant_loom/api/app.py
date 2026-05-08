@@ -239,11 +239,8 @@ async def api_alerts(
                 .all()
             )
 
-        return JSONResponse(content={
-            "total": total,
-            "page": page,
-            "page_size": page_size,
-            "items": [
+            # 在 session 内将 ORM 对象转为普通 dict (避免 detached instance 错误)
+            result_items = [
                 {
                     "id": a.id,
                     "ts": a.ts.isoformat() if a.ts else None,
@@ -259,7 +256,13 @@ async def api_alerts(
                     "is_sent": a.is_sent,
                 }
                 for a in items
-            ],
+            ]
+
+        return JSONResponse(content={
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "items": result_items,
         })
     except HTTPException:
         raise
@@ -306,44 +309,47 @@ async def api_alert_detail(alert_id: int):
                 .all()
             )
 
-        return JSONResponse(content={
-            "id": alert.id,
-            "ts": alert.ts.isoformat() if alert.ts else None,
-            "code": alert.code,
-            "name": alert.name,
-            "alert_type": alert.alert_type,
-            "trigger_reason": alert.trigger_reason,
-            "net_inflow_amount": float(alert.net_inflow_amount) if alert.net_inflow_amount else 0,
-            "inflow_ratio": float(alert.inflow_ratio) if alert.inflow_ratio else 0,
-            "confidence_score": alert.confidence_score,
-            "risk_level": alert.risk_level,
-            "ai_summary": alert.ai_summary,
-            "ai_evidence": alert.ai_evidence,
-            "is_sent": alert.is_sent,
-            "created_at": alert.created_at.isoformat() if alert.created_at else None,
-            "related_events": [
-                {
-                    "id": e.id,
-                    "event_type": e.event_type,
-                    "title": e.title,
-                    "content": e.content,
-                    "source": e.source,
-                    "published_at": e.published_at.isoformat() if e.published_at else None,
-                    "sentiment_score": e.sentiment_score,
-                }
-                for e in events
-            ],
-            "notification_logs": [
-                {
-                    "id": n.id,
-                    "channel": n.channel,
-                    "status": n.status,
-                    "sent_at": n.sent_at.isoformat() if n.sent_at else None,
-                    "error_message": n.error_message,
-                }
-                for n in notif_logs
-            ],
-        })
+            # 在 session 内将 ORM 对象转为普通 dict (避免 detached instance 错误)
+            result = {
+                "id": alert.id,
+                "ts": alert.ts.isoformat() if alert.ts else None,
+                "code": alert.code,
+                "name": alert.name,
+                "alert_type": alert.alert_type,
+                "trigger_reason": alert.trigger_reason,
+                "net_inflow_amount": float(alert.net_inflow_amount) if alert.net_inflow_amount else 0,
+                "inflow_ratio": float(alert.inflow_ratio) if alert.inflow_ratio else 0,
+                "confidence_score": alert.confidence_score,
+                "risk_level": alert.risk_level,
+                "ai_summary": alert.ai_summary,
+                "ai_evidence": alert.ai_evidence,
+                "is_sent": alert.is_sent,
+                "created_at": alert.created_at.isoformat() if alert.created_at else None,
+                "related_events": [
+                    {
+                        "id": e.id,
+                        "event_type": e.event_type,
+                        "title": e.title,
+                        "content": e.content,
+                        "source": e.source,
+                        "published_at": e.published_at.isoformat() if e.published_at else None,
+                        "sentiment_score": e.sentiment_score,
+                    }
+                    for e in events
+                ],
+                "notification_logs": [
+                    {
+                        "id": n.id,
+                        "channel": n.channel,
+                        "status": n.status,
+                        "sent_at": n.sent_at.isoformat() if n.sent_at else None,
+                        "error_message": n.error_message,
+                    }
+                    for n in notif_logs
+                ],
+            }
+
+        return JSONResponse(content=result)
     except HTTPException:
         raise
     except Exception as e:
@@ -383,6 +389,11 @@ async def api_stats_summary():
                 .group_by(StockAlert.alert_type)
                 .all()
             )
+            # 在 session 内材料化为普通 dict
+            type_list = [
+                {"type": t.alert_type or "unknown", "count": t.cnt}
+                for t in type_stats
+            ]
 
             # 近 7 天日均
             week_total = (
@@ -400,10 +411,7 @@ async def api_stats_summary():
                 "p3": p3_count,
                 "ai_analyzed": ai_count,
             },
-            "by_type": [
-                {"type": t.alert_type or "unknown", "count": t.cnt}
-                for t in type_stats
-            ],
+            "by_type": type_list,
             "week_avg_daily": avg_daily,
         })
     except HTTPException:
@@ -437,26 +445,25 @@ async def api_stats_trend(days: int = Query(7, ge=1, le=90)):
                 .all()
             )
 
-        # 构建日期 → 各类别计数的映射
-        date_map: dict = {}
-        for r in rows:
-            d_str = str(r.d)
-            if d_str not in date_map:
-                date_map[d_str] = {}
-            date_map[d_str][r.alert_type or "unknown"] = r.cnt
+            # 在 session 内构建结果 (避免 detached instance)
+            date_map: dict = {}
+            for r in rows:
+                d_str = str(r.d)
+                if d_str not in date_map:
+                    date_map[d_str] = {}
+                date_map[d_str][r.alert_type or "unknown"] = r.cnt
 
-        dates = sorted(date_map.keys())
-        by_type: dict = {}
-        for d in dates:
-            for at, cnt in date_map[d].items():
-                if at not in by_type:
-                    by_type[at] = []
-                by_type[at].append(cnt)
-        # 补齐每个 type 的长度
-        for at in by_type:
-            by_type[at] = by_type[at] + [0] * (len(dates) - len(by_type[at]))
+            dates = sorted(date_map.keys())
+            by_type: dict = {}
+            for d in dates:
+                for at, cnt in date_map[d].items():
+                    if at not in by_type:
+                        by_type[at] = []
+                    by_type[at].append(cnt)
+            for at in by_type:
+                by_type[at] = by_type[at] + [0] * (len(dates) - len(by_type[at]))
 
-        totals = [sum(date_map[d].values()) for d in dates]
+            totals = [sum(date_map[d].values()) for d in dates]
 
         return JSONResponse(content={
             "dates": dates,
@@ -494,8 +501,8 @@ async def api_stocks_search(
                 .all()
             )
 
-        return JSONResponse(content={
-            "results": [
+            # 在 session 内将 ORM 对象转为普通 dict
+            results = [
                 {
                     "code": s.code,
                     "name": s.name,
@@ -503,8 +510,9 @@ async def api_stocks_search(
                     "industry": s.industry,
                 }
                 for s in stocks
-            ],
-        })
+            ]
+
+        return JSONResponse(content={"results": results})
     except HTTPException:
         raise
     except Exception as e:
@@ -521,6 +529,19 @@ if os.path.isdir(_FRONTEND_DIR):
     assets_dir = os.path.join(_FRONTEND_DIR, "assets")
     if os.path.isdir(assets_dir):
         app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
+
+    # 显式路由: 根级静态文件 (必须在 SPA fallback 前注册)
+    from fastapi.responses import FileResponse
+
+    def _make_static_handler(file_path: str):
+        def handler():
+            return FileResponse(file_path)
+        return handler
+
+    for _filename in ("config.js", "vite.svg", "favicon.ico"):
+        _file_path = os.path.join(_FRONTEND_DIR, _filename)
+        if os.path.isfile(_file_path):
+            app.get(f"/{_filename}")(_make_static_handler(_file_path))
 
     @app.get("/{full_path:path}", response_class=HTMLResponse)
     async def spa_fallback(full_path: str):
