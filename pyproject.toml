@@ -1,0 +1,58 @@
+[build-system]
+requires = ["setuptools>=75", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "quant_loom"
+version = "0.5.0"
+description = "QuantLoom·量梭 — A-Share Institutional Flow AI Monitor"
+authors = [{ name = "chensong" }]
+license = { text = "BSD-3-Clause" }
+readme = { file = "CLAUDE.md", content-type = "text/markdown" }
+requires-python = ">=3.12"
+keywords = ["a-share", "stock", "quant", "fund-flow", "anomaly-detection", "ai-analysis"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Financial and Insurance Industry",
+    "License :: OSI Approved :: BSD License",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Office/Business :: Financial :: Investment",
+]
+
+dependencies = [
+    "requests>=2.31",
+    "akshare",
+    "sqlalchemy>=2.0",
+    "pymysql>=1.1",
+    "redis>=5.0",
+    "celery>=5.4",
+    "apscheduler>=3.10",
+    "pyyaml>=6.0",
+    "pydantic>=2.0",
+    "pydantic-settings>=2.0",
+    "python-dotenv>=1.0",
+    "tenacity>=9.0",
+    "openai>=1.0",
+    "anthropic>=0.30",
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+    "prometheus-client>=0.20",
+    "loguru>=0.7",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "pytest-cov>=5.0"]
+
+[project.scripts]
+quant-loom-scan = "scripts.run_scanner:main_cli"
+quant-loom-api = "quant_loom.api.app:main_cli"
+quant-loom-worker = "quant_loom.tasks.celery_app:main_worker"
+
+[tool.setuptools.packages.find]
+include = ["quant_loom*", "config*", "scripts*"]
+
+[tool.setuptools.package-data]
+quant_loom = ["../config/rules.yaml", "../frontend/dist/**"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
