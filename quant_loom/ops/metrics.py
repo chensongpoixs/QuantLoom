@@ -84,6 +84,12 @@ data_fetch_duration = Histogram(
     buckets=(0.1, 0.5, 1, 2, 5, 10, 30, float("inf")),
 )
 
+data_fetch_errors = Counter(
+    "quantloom_data_fetch_errors_total",
+    "数据抓取失败总次数",
+    ["source", "endpoint"],  # source: xtick/akshare, endpoint: quotes/fund_flow/sectors/kline
+)
+
 # ---- 外部 API 调用 ----
 
 api_call_duration = Histogram(

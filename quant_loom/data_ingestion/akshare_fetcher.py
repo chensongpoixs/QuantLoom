@@ -48,8 +48,37 @@ from typing import Optional
 
 import pandas as pd
 from loguru import logger
+import requests
 
 from quant_loom.ops.retry import network_retry
+from quant_loom.ops.metrics import data_fetch_errors
+
+# ---- 浏览器级请求头伪装 (避免被东方财富识别为爬虫) ----
+_BROWSER_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/125.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+    "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+    "Accept-Encoding": "gzip, deflate",
+    "Connection": "keep-alive",
+    "Referer": "https://data.eastmoney.com/",
+}
+
+# 全局 monkey-patch: 所有 requests Session 的 send() 自动注入浏览器 headers
+_send_original = requests.Session.send
+
+
+def _send_with_headers(self, request, **kwargs):
+    """注入浏览器伪装头后发送请求"""
+    for key, value in _BROWSER_HEADERS.items():
+        request.headers.setdefault(key, value)
+    return _send_original(self, request, **kwargs)
+
+
+requests.Session.send = _send_with_headers  # type: ignore[method-assign]
 
 
 class AkshareFetcher:
@@ -87,6 +116,7 @@ class AkshareFetcher:
             return df
         except Exception as e:
             logger.error(f"Failed to fetch stock list: {e}")
+            data_fetch_errors.labels(source="akshare", endpoint="stock_list").inc()
             return pd.DataFrame()
 
     def fetch_realtime_quotes(self) -> pd.DataFrame:
@@ -116,6 +146,7 @@ class AkshareFetcher:
             return df
         except Exception as e:
             logger.error(f"Failed to fetch real-time quotes: {e}")
+            data_fetch_errors.labels(source="akshare", endpoint="quotes").inc()
             return pd.DataFrame()
 
     # ---- 资金流 ----
@@ -149,6 +180,7 @@ class AkshareFetcher:
             return df
         except Exception as e:
             logger.error(f"Failed to fetch fund flow ranking: {e}")
+            data_fetch_errors.labels(source="akshare", endpoint="fund_flow").inc()
             return pd.DataFrame()
 
     def fetch_individual_fund_flow(self, code: str, market: str = "sh") -> Optional[pd.DataFrame]:
@@ -190,6 +222,7 @@ class AkshareFetcher:
             return df
         except Exception as e:
             logger.error(f"Failed to fetch sector quotes: {e}")
+            data_fetch_errors.labels(source="akshare", endpoint="sectors").inc()
             return pd.DataFrame()
 
     # ---- 历史数据 ----
