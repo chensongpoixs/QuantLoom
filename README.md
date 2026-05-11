@@ -96,8 +96,18 @@ quant_loom/
 │   ├── init_db.sql              # 建表 DDL (7张表)
 │   ├── init_db.py               # 建表脚本
 │   ├── run_scanner.py           # 一键运行入口
-│   ├── start_worker.sh          # Celery Worker 启动
-│   └── start_beat.sh            # Celery Beat 启动
+│   ├── run_scanner_top0.py      # 可选：等价 `run_scanner.py --top 0`（便捷一行命令）
+│   ├── run_celery_beat.py       # 等价 `celery … beat`（与 exe 打包入口一致）
+│   ├── run_celery_worker.py    # 等价 Windows Worker `--pool=threads --concurrency=2`
+│   ├── run_api.py               # 等价 `uvicorn … --host 0.0.0.0 --port 9090`
+│   ├── packaging/               # Windows PyInstaller 打包
+│   │   ├── build_exe_scanner.ps1        # 扫描管线，exe 支持 `--top` / `--dry-run` / `--skip-events`
+│   │   ├── build_exe_celery_beat.ps1
+│   │   ├── build_exe_celery_worker.ps1
+│   │   ├── build_exe_api.ps1
+│   │   └── build_all_exe.ps1    # 依次打上述四个 exe
+│   ├── start_worker.sh          # Celery Worker 启动 (Linux)
+│   └── start_beat.sh            # Celery Beat 启动 (Linux)
 ├── tests/
 │   ├── test_rule_engine.py       # 规则引擎 (18 tests)
 │   ├── test_cleaner.py           # 数据清洗 (9 tests)
@@ -168,11 +178,23 @@ python scripts/run_scanner.py
 # 控制 AI 分析数量
 python scripts/run_scanner.py --top 20     # AI 分析 top 20
 python scripts/run_scanner.py --top 0      # 跳过 AI 分析
+python scripts/run_scanner_top0.py         # 同上（便捷封装一行命令）
 
 # 仅扫描不写库（测试用）
 python scripts/run_scanner.py --dry-run
 # 跳过事件抓取
 python scripts/run_scanner.py --skip-events
+```
+
+Windows 下若已用 `scripts/packaging/build_exe_scanner.ps1` 打成 exe，**命令行参数与上表相同**（在 `dist/QuantLoomScanner/` 目录中运行）：
+
+```text
+QuantLoomScanner.exe
+QuantLoomScanner.exe --top 20
+QuantLoomScanner.exe --top 0
+QuantLoomScanner.exe --dry-run
+QuantLoomScanner.exe --skip-events
+QuantLoomScanner.exe --top 0 --dry-run --skip-events
 ```
 
 ### 5. 定时调度 (Celery)
@@ -187,6 +209,10 @@ celery -A quant_loom.tasks.celery_app worker -l info --pool=threads --concurrenc
 
 # 启动 Beat 定时器 (Linux / Windows 通用)
 celery -A quant_loom.tasks.celery_app beat -l info
+
+# 或使用等价 Python 入口（与下方 PyInstaller 打包一致，便于本地对齐 exe 行为）
+python scripts/run_celery_worker.py
+python scripts/run_celery_beat.py
 ```
 
 ### 6. API 服务
@@ -195,9 +221,54 @@ celery -A quant_loom.tasks.celery_app beat -l info
 uvicorn quant_loom.api.app:app --host 0.0.0.0 --port 9090
 # 健康检查: curl localhost:9090/health
 # 指标:     curl localhost:9090/metrics
+
+# 等价入口（与 exe 打包一致）
+python scripts/run_api.py
 ```
 
-### 7. 运行测试
+### 7. Windows 可执行文件打包 (PyInstaller)
+
+将 **全链路扫描**（`run_scanner.py`，exe 支持 **`--top` / `--dry-run` / `--skip-events`**）、**Celery Beat**、**Celery Worker**、**FastAPI (Uvicorn)** 打成 exe，服务类入口与仓库内 `scripts/run_*.py` 一致：
+
+| 说明 | Python 入口 | 打包脚本 | 产物目录 |
+|------|-------------|---------|---------|
+| 扫描管线（参数与 `python scripts/run_scanner.py` 相同） | `scripts/run_scanner.py` | `scripts/packaging/build_exe_scanner.ps1` | `dist/QuantLoomScanner/` |
+| Beat | `scripts/run_celery_beat.py` | `scripts/packaging/build_exe_celery_beat.ps1` | `dist/QuantLoomCeleryBeat/` |
+| Worker（threads / concurrency=2） | `scripts/run_celery_worker.py` | `scripts/packaging/build_exe_celery_worker.ps1` | `dist/QuantLoomCeleryWorker/` |
+| API | `scripts/run_api.py` | `scripts/packaging/build_exe_api.ps1` | `dist/QuantLoomApi/` |
+
+在项目根目录执行（需已 `pip install -r requirements.txt`，脚本会自动安装 `pyinstaller`）：
+
+```powershell
+.\scripts\packaging\build_exe_scanner.ps1
+.\scripts\packaging\build_exe_celery_beat.ps1
+.\scripts\packaging\build_exe_celery_worker.ps1
+.\scripts\packaging\build_exe_api.ps1
+# 或一次打完四个
+.\scripts\packaging\build_all_exe.ps1
+```
+
+**说明**：打包默认为 `--onedir` 目录分发；运行 exe 时需能读取 **`.env`**（放在 exe 同目录或于仓库根目录运行），并保证 **Redis / MySQL** 及数据源可达。**`QuantLoomScanner.exe`** 请在命令行传入与脚本相同的参数（见 §4）。Worker 内嵌参数为 threads 池、`concurrency=2`；API 监听 **9090**。修改 Worker/API 行为请编辑对应 `scripts/run_*.py` 后重新打包。
+
+**分发与运行**：`--onedir` 必须把 **`dist` 下整个程序目录**（含 `QuantLoomScanner.exe`、`_internal` 及其中所有文件）原样拷贝到目标机，不能只复制单个 exe。
+
+**故障排查（`Failed to load Python DLL ... python312.dll` / `[PYI-391140:ERROR]`）**：表示引导程序找到了 `_internal\python312.dll`，但系统加载失败。请依次检查：
+
+1. **安装 Visual C++ 运行库（x64）**：与 Python 3.12 自带的官方构建一致，目标机需安装 [Microsoft Visual C++ Redistributable for VS 2015–2022 (x64)](https://aka.ms/vs/17/release/vc_redist.x64.exe)。全新 Windows 或未装过 VS 的机器最常见。
+2. **杀毒 / 防护软件**：避免拦截或隔离 `_internal` 下的 `python312.dll`、`vcruntime*.dll`；必要时将整目录加入排除项。
+3. **目录完整性**：确认 `_internal\python312.dll` 存在且大小正常（未损坏、未只拷了一半）。
+4. **架构一致**：打包机与运行机均为 **64 位 Windows**（与 x64 的 Python / PyInstaller 一致）。
+
+**容易误解的一点：`python312.dll` 其实已经在包里**（位于 `_internal\python312.dll`）。上文的 `Failed to load` 是**系统加载 DLL 失败**（常见为缺 VC++ 运行库或被杀软处理），**不是** PyInstaller 没把解释器打进去。若 `_internal` 里根本没有 `python312.dll`，才是拷贝不完整或打错目录。
+
+**若运行时报 `ModuleNotFoundError` / 缺某资源（才是「没打进去」）**：PyInstaller 主要靠**静态分析** `import`；**字符串里动态 import**、分支里才加载的库、以及**非 Python 数据文件**可能漏打。处理办法：
+
+- 看打包时生成的 `build/<名称>/warn-<名称>.txt`，里面的 *missing module* 可作线索。
+- 在对应 `scripts/packaging/build_exe_*.ps1` 里为 `python -m PyInstaller` 增加  
+  `--hidden-import 包名` 或 `--collect-all 包名`（与 `akshare` 同类的重资源包已用 `collect-all`），然后**重新打包**。
+- **`.env`、密钥**通常**不会**也**不应**打进 exe，需与 `exe` 同目录或工作目录可找到；`config` 目录已通过 `--add-data` 打入，若你新增其它资源目录，需同样用 `--add-data` 或改代码用 `sys._MEIPASS` 定位（见 [PyInstaller 资源路径](https://pyinstaller.org)）。
+
+### 8. 运行测试
 
 ```bash
 pytest tests/ -v                          # 全部 160 个测试

@@ -104,6 +104,15 @@ class TestScanTask:
             scan_task.run()
             mock_load.assert_not_called()
 
+    def test_scan_task_skips_when_cluster_lock_held(self):
+        """互斥锁已被占用时跳过，避免多任务并发打 AkShare"""
+        from quant_loom.tasks.scanner_tasks import scan_task
+        with patch("quant_loom.tasks.scanner_tasks._load_main") as mock_load, \
+             patch("quant_loom.tasks.scanner_tasks.is_trading_time", return_value=True), \
+             patch("quant_loom.tasks.scanner_tasks._begin_scan_lock", return_value=None):
+            scan_task.run()
+            mock_load.assert_not_called()
+
 
 class TestClosingReportTask:
     """收盘日报任务"""

@@ -129,3 +129,34 @@ app.conf.update(
         },
     },
 )
+
+
+def _try_claim_startup_scan_lock(ttl_seconds: int = 180) -> bool:
+    """多 Worker 时仅允许一个实例在短时间窗口内投递启动扫描。"""
+    from quant_loom.storage.redis_client import redis_client
+
+    c = redis_client.client
+    if c is None:
+        return True
+    try:
+        return bool(c.set("qloom:celery_startup_scan", "1", nx=True, ex=ttl_seconds))
+    except Exception:
+        return True
+
+
+from celery.signals import worker_ready  # noqa: E402 — 在 app 创建后注册
+from loguru import logger as _celery_logger  # noqa: E402
+
+
+@worker_ready.connect(weak=False)
+def _schedule_scan_on_worker_startup(**_kwargs):
+    """Worker 启动就绪后主动拉一次行情扫描（与定时 Beat 互补）。"""
+    if not settings.celery_scan_on_worker_startup:
+        return
+    if not _try_claim_startup_scan_lock():
+        _celery_logger.info("Startup scan not enqueued: lock held (another worker scheduled recently)")
+        return
+    from quant_loom.tasks.scanner_tasks import scan_task
+
+    scan_task.apply_async(countdown=10)
+    _celery_logger.info("Worker ready: enqueued scan_task (startup pull, countdown=10s)")

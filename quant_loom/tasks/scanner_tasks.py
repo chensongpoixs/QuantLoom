@@ -45,6 +45,7 @@
 
 import importlib.util
 import sys
+import threading
 from datetime import datetime, time
 from pathlib import Path
 
@@ -54,6 +55,55 @@ from quant_loom.tasks.celery_app import app
 
 # 项目根目录 (绝对路径)
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+
+# 全市场扫描互斥：AkShare 对东方财富并发极高时易被掐断；Beat + 启动预热可能短时间重复入队。
+_SCAN_LOCK_KEY = "qloom:full_market_scan_lock"
+_SCAN_LOCK_TTL_SEC = 900
+_FALLBACK_SCAN_LOCK = threading.Lock()
+
+
+def _begin_scan_lock(request_id: str) -> str | None:
+    """获取扫描锁。返回 \"redis\" / \"local\" 表示已占用；None 表示已有其他任务在扫，本任务应跳过。"""
+    from quant_loom.storage.redis_client import redis_client
+
+    c = redis_client.client
+    if c is not None:
+        try:
+            if c.set(_SCAN_LOCK_KEY, request_id, nx=True, ex=_SCAN_LOCK_TTL_SEC):
+                return "redis"
+            logger.info(
+                f"scan_task skipped: another scan holds the cluster lock (request_id={request_id})"
+            )
+            return None
+        except Exception as e:
+            logger.warning(f"Redis scan lock unavailable, using in-process lock: {e}")
+    if _FALLBACK_SCAN_LOCK.acquire(blocking=False):
+        return "local"
+    logger.info(
+        f"scan_task skipped: in-process scan already running (request_id={request_id})"
+    )
+    return None
+
+
+def _end_scan_lock(kind: str | None, request_id: str) -> None:
+    if kind is None:
+        return
+    if kind == "local":
+        _FALLBACK_SCAN_LOCK.release()
+        return
+    if kind != "redis":
+        return
+    from quant_loom.storage.redis_client import redis_client
+
+    c = redis_client.client
+    if not c:
+        return
+    try:
+        cur = c.get(_SCAN_LOCK_KEY)
+        if cur is not None and cur.decode() == request_id:
+            c.delete(_SCAN_LOCK_KEY)
+    except Exception as e:
+        logger.warning(f"Redis scan lock release failed: {e}")
 
 # A 股交易时段 (UTC+8)
 _TRADING_START = time(9, 0)   # 上午 9:00
@@ -112,13 +162,19 @@ def scan_task(self):
     if not is_trading_time():
         logger.debug(f"scan_task skipped: outside trading hours (now={datetime.now().strftime('%a %H:%M')})")
         return
-    logger.info(f"=== Celery scan_task triggered === request_id={self.request.id}")
+    rid = self.request.id
+    logger.info(f"=== Celery scan_task triggered === request_id={rid}")
+    lock_kind = _begin_scan_lock(str(rid))
+    if lock_kind is None:
+        return
     try:
         main = _load_main()
         main(dry_run=False, top_n=10, skip_events=False)
     except Exception as e:
         logger.error(f"scan_task execution error: {e}")
         raise  # 重新抛出以触发 Celery retry
+    finally:
+        _end_scan_lock(lock_kind, str(rid))
 
 
 @app.task(

@@ -119,6 +119,7 @@ python scripts/run_scanner.py --top 20     # AI analyze top 20
 python scripts/run_scanner.py --top 0      # skip AI analysis
 python scripts/run_scanner.py --dry-run    # scan only, no DB writes
 python scripts/run_scanner.py --skip-events # skip event fetching
+python scripts/run_scanner_top0.py          # same as --top 0 (shortcut)
 
 # --- Scheduled run (Celery) ---
 # Linux:
@@ -129,9 +130,16 @@ celery -A quant_loom.tasks.celery_app beat -l info &
 # Or via scripts (Linux only):
 bash scripts/start_worker.sh
 bash scripts/start_beat.sh
+# Python entrypoints (same as PyInstaller targets; Windows-friendly):
+python scripts/run_celery_worker.py
+python scripts/run_celery_beat.py
 
 # --- API server ---
 uvicorn quant_loom.api.app:app --host 0.0.0.0 --port 9090
+python scripts/run_api.py   # equivalent launcher
+
+# --- Windows exe (PyInstaller): Scanner.exe uses same args as run_scanner.py; Beat / Worker / API ---
+# README.md §「Windows 可执行文件打包」; scripts/packaging/build_exe_scanner.ps1 + build_all_exe.ps1
 
 # Verify:
 curl localhost:9090/health    # {"status":"ok","checks":{"mysql":"ok","redis":"ok"}}

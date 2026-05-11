@@ -78,6 +78,10 @@ class Settings(BaseSettings):
     llama_model: str = ""         # e.g. qwen3-32b
     llama_api_key: str = "not-needed"  # llama.cpp 默认不需要 key
 
+    # --- Celery ---
+    # Worker 就绪后是否立即投递一次全市场扫描（不等 Beat 下一个周期）
+    celery_scan_on_worker_startup: bool = True
+
     # --- 数据源 ---
     # "xtick" = XTick HTTP API (推荐, 需 token)
     # "akshare" = AkShare / 东方财富 (免费, 但可能网络受限)
