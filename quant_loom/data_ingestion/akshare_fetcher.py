@@ -121,12 +121,18 @@ _BROWSER_HEADERS = {
 #   QL_HTTP_BACKOFF_MAX=N      单次最长退避秒数（默认 30）
 #   QL_EASTMONEY_UT=xxx        覆盖默认 ut 参数（被滥用 / 被 ban 时自己抓包替换）
 #   QL_EASTMONEY_HOST_ROTATE=0 关闭 host 轮询
+#   QL_HTTP_THROTTLE=0.5       东财接口访问的全局限流（秒），降低被封风险
 _HTTP_LOG_ENABLED = os.getenv("QL_HTTP_LOG", "1") != "0"
 _HTTP_LOG_BODY_LEN = int(os.getenv("QL_HTTP_LOG_BODY", "0"))
 _HTTP_MAX_ATTEMPTS = max(1, int(os.getenv("QL_HTTP_MAX_ATTEMPTS", "10")))
 _HTTP_BACKOFF_MAX = max(1.0, float(os.getenv("QL_HTTP_BACKOFF_MAX", "30")))
 _QL_UT_OVERRIDE = os.getenv("QL_EASTMONEY_UT", "").strip()
 _QL_HOST_ROTATE = os.getenv("QL_EASTMONEY_HOST_ROTATE", "1") != "0"
+_QL_HTTP_THROTTLE = float(os.getenv("QL_HTTP_THROTTLE", "0.5"))
+
+import threading
+_THROTTLE_LOCK = threading.Lock()
+_last_request_time = 0.0
 
 # 东方财富 push2 多 host 池 (来自社区抓包 + DNS 探测)
 # 业界共识: 客户端轮询多个子域名可分散单 host 限流，是替代付费代理的免费方案
@@ -222,7 +228,18 @@ def _truncate(text: str, n: int) -> str:
 
 
 def _send_with_headers(self, request, **kwargs):
-    """注入浏览器伪装头 + 单请求级透明重试 + 多 host 轮询 + 详细日志"""
+    """注入浏览器伪装头 + 单请求级透明重试 + 多 host 轮询 + 详细日志 + 全局限流"""
+    global _last_request_time
+    
+    # 针对东方财富接口做全局限流，避免并发/连续翻页太快触发服务端封禁
+    if _QL_HTTP_THROTTLE > 0 and "eastmoney.com" in (request.url or ""):
+        with _THROTTLE_LOCK:
+            now = time.time()
+            elapsed = now - _last_request_time
+            if elapsed < _QL_HTTP_THROTTLE:
+                time.sleep(_QL_HTTP_THROTTLE - elapsed)
+            _last_request_time = time.time()
+
     for key, value in _BROWSER_HEADERS.items():
         request.headers.setdefault(key, value)
 
