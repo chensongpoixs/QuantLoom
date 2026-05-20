@@ -5,6 +5,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch } from 'vue'
 import * as echarts from 'echarts'
+import { getEchartsTheme } from '@/utils/echarts-theme'
 
 const props = withDefaults(
   defineProps<{
@@ -86,7 +87,7 @@ function riskScore(): number {
 
 onMounted(() => {
   if (chartRef.value) {
-    chart = echarts.init(chartRef.value, 'quantloom')
+    chart = echarts.init(chartRef.value, getEchartsTheme())
     render()
   }
 })

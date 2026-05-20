@@ -62,6 +62,13 @@ import quant_loom.ops.logger  # noqa: F401 — 初始化文件日志输出
 
 from config.settings import settings
 from quant_loom.data_ingestion.cleaner import DataCleaner
+from quant_loom.data_ingestion.north_flow_fetcher import NorthFlowFetcher
+from quant_loom.data_ingestion.lhb_fetcher import LHBFetcher
+from quant_loom.data_ingestion.finance_fetcher import FinanceFetcher
+from quant_loom.data_ingestion.block_trade_fetcher import BlockTradeFetcher
+from quant_loom.feature_engineering.factors import AlphaFactors
+from quant_loom.feature_engineering.technical import TechnicalIndicators
+from quant_loom.feature_engineering.market_breadth import MarketBreadth
 from quant_loom.rule_engine.scanner import scanner
 from quant_loom.rule_engine.dedup import AlertDeduplicator
 from quant_loom.ai_analyzer.llm_client import llm_client
@@ -117,6 +124,96 @@ def main(dry_run: bool = False, top_n: int = 10, skip_events: bool = False):
     quotes_clean = DataCleaner.clean_quotes(quotes_raw)
     fund_flow_clean = DataCleaner.clean_fund_flow(fund_flow_raw)
 
+    # ---- 2b. Market breadth ----
+    market_breadth = MarketBreadth.compute(quotes_clean)
+    logger.info(f"  Market breadth: {market_breadth['limit_up_count']}↑ / {market_breadth['limit_down_count']}↓ "
+                f"| up/down ratio: {market_breadth['up_down_ratio']} "
+                f"| sentiment: {market_breadth['sentiment']} "
+                f"| total turnover: {market_breadth['total_turnover']/1e8:.1f}B")
+
+    # Store market breadth snapshot
+    if not dry_run and mysql_client.ping():
+        try:
+            from quant_loom.storage.models import MarketBreadthSnapshot
+            snap = MarketBreadthSnapshot(
+                limit_up_count=market_breadth["limit_up_count"],
+                limit_down_count=market_breadth["limit_down_count"],
+                up_count=market_breadth["up_count"],
+                down_count=market_breadth["down_count"],
+                flat_count=market_breadth["flat_count"],
+                up_down_ratio=market_breadth["up_down_ratio"],
+                adl=market_breadth["adl"],
+                broken_board_count=market_breadth["broken_board_count"],
+                avg_pct_change=market_breadth["avg_pct_change"],
+                total_turnover=market_breadth["total_turnover"],
+                limit_up_pct=market_breadth["limit_up_pct"],
+                limit_down_pct=market_breadth["limit_down_pct"],
+                sentiment=market_breadth["sentiment"],
+            )
+            mysql_client.insert_or_update(snap)
+        except Exception as e:
+            logger.debug(f"Market breadth storage skipped: {e}")
+
+    # ---- 2c. North-bound capital flow ----
+    north_features: dict = {}
+    try:
+        nf_fetcher = NorthFlowFetcher()
+        north_features = nf_fetcher.fetch_features()
+        logger.info(f"  North flow: today={north_features.get('north_net_inflow_today', 0):.1f}B "
+                    f"| 5d avg={north_features.get('north_net_inflow_5d_avg', 0):.1f}B "
+                    f"| accel={north_features.get('north_inflow_accel', 0):.1f}% "
+                    f"| top10 buys={len(north_features.get('north_top10_net_buy', {}))}")
+
+        # Store north flow daily snapshot
+        if not dry_run and mysql_client.ping() and north_features.get("north_net_inflow_today", 0) != 0:
+            try:
+                from quant_loom.storage.models import NorthFlowDaily
+                today = date.today()
+                existing = False
+                with mysql_client.get_session() as sess:
+                    existing = sess.query(NorthFlowDaily).filter(
+                        NorthFlowDaily.trade_date == today
+                    ).first() is not None
+                if not existing:
+                    record = NorthFlowDaily(
+                        trade_date=today,
+                        total_net_inflow=north_features.get("north_net_inflow_today", 0),
+                    )
+                    mysql_client.insert_or_update(record, lookup_columns=["trade_date"])
+            except Exception as e:
+                logger.debug(f"North flow storage skipped: {e}")
+    except Exception as e:
+        logger.warning(f"North flow fetch failed (non-blocking): {e}")
+
+    # ---- 2d. LHB (Dragon-Tiger Board) features ----
+    lhb_features: dict = {}
+    try:
+        lhb_fetcher = LHBFetcher()
+        lhb_features = lhb_fetcher.fetch_features()
+        if lhb_features.get("lhb_stocks"):
+            logger.info(f"  LHB: {len(lhb_features['lhb_stocks'])} on board today "
+                        f"({len(lhb_features.get('lhb_inst_stocks', []))} with institutional seats) "
+                        f"| top month: {len(lhb_features.get('lhb_top_month', {}))} frequent")
+        else:
+            logger.info("  LHB: no data today")
+    except Exception as e:
+        logger.warning(f"LHB fetch failed (non-blocking): {e}")
+
+    # ---- 2e. Block trade features ----
+    block_trade_features: dict[str, dict] = {}
+    try:
+        bt_fetcher = BlockTradeFetcher()
+        block_trade_features = bt_fetcher.fetch_features()
+        if block_trade_features:
+            sig_count = sum(1 for v in block_trade_features.values()
+                           if abs(v.get("premium", 0)) >= 3.0)
+            logger.info(f"  Block trades: {len(block_trade_features)} stocks "
+                        f"({sig_count} with significant premium/discount)")
+        else:
+            logger.info("  Block trades: no data today")
+    except Exception as e:
+        logger.warning(f"Block trade fetch failed (non-blocking): {e}")
+
     # ---- 3. Historical fund flow accumulation + consecutive inflow days ----
     consecutive_inflow_map: dict[str, int] = {}
     if not dry_run and mysql_client.ping():
@@ -132,21 +229,46 @@ def main(dry_run: bool = False, top_n: int = 10, skip_events: bool = False):
     else:
         logger.info("[3/7] Skipping historical fund flow (dry-run or MySQL unavailable)")
 
-    # ---- 4. Event fetch (quick pre-scan for candidate codes first) ----
-    stock_events: dict[str, list] = {}
-    if not skip_events and not dry_run:
-        logger.info("[4/7] Pre-scan + event fetch...")
-        # Quick pre-scan to get candidate stock codes
-        pre_alerts = scanner.scan_and_format(quotes_clean, fund_flow_clean,
-                                             consecutive_inflow_map=consecutive_inflow_map)
-        candidate_codes = list(set(a["code"] for a in pre_alerts[:50]))  # top 50 candidates
+    # ---- 4. Pre-scan + K-line fetch + technical indicators ----
+    technical_features: dict[str, dict] = {}
+    candidate_codes: list[str] = []
 
-        if candidate_codes:
+    # Quick pre-scan to get candidate stock codes
+    pre_alerts = scanner.scan_and_format(quotes_clean, fund_flow_clean,
+                                         consecutive_inflow_map=consecutive_inflow_map)
+    candidate_codes = list(set(a["code"] for a in pre_alerts[:50]))
+
+    if candidate_codes:
+        logger.info(f"[4/7] Fetching K-lines + computing technicals for {len(candidate_codes)} candidates...")
+        tech_success = 0
+        for i, code in enumerate(candidate_codes):
+            try:
+                kline = fetcher.fetch_history(code, period="daily", days=120)
+                if kline is not None and not kline.empty and len(kline) >= 20:
+                    kline = kline.sort_values("date" if "date" in kline.columns else kline.columns[0])
+                    kline = kline.rename(columns={
+                        "开盘": "open", "收盘": "close", "最高": "high",
+                        "最低": "low", "成交量": "volume",
+                    })
+                    # Ensure required columns exist
+                    for col in ["open", "high", "low", "close", "volume"]:
+                        if col not in kline.columns:
+                            raise KeyError(f"Missing column: {col}")
+                    tech = TechnicalIndicators.compute_latest_features(kline)
+                    technical_features[code] = tech
+                    tech_success += 1
+            except Exception as e:
+                logger.debug(f"Technical indicators skipped {code}: {e}")
+        logger.info(f"  Technical indicators computed: {tech_success}/{len(candidate_codes)} stocks")
+
+        # ---- 4b. Event fetch ----
+        stock_events: dict[str, list] = {}
+        if not skip_events and not dry_run:
+            logger.info(f"[4b/7] Event fetch for {len(candidate_codes)} candidates...")
             from quant_loom.data_ingestion.event_fetcher import EventFetcher
             event_fetcher = EventFetcher()
             stock_events = event_fetcher.fetch_events_batch(candidate_codes)
 
-            # Store events to MySQL
             from quant_loom.ai_analyzer.rag_store import RAGStore
             rag = RAGStore()
             all_events = []
@@ -155,18 +277,71 @@ def main(dry_run: bool = False, top_n: int = 10, skip_events: bool = False):
             rag.deduplicate_and_store(all_events)
             logger.info(f"  Event fetch complete: {len(stock_events)} stocks have event data")
     else:
-        logger.info("[4/7] Skipping event fetch")
+        stock_events = {}
+        logger.info("[4/7] No candidates, skipping K-line/event fetch")
 
-    # ---- 5. Rule scan (with event matching) ----
+    # ---- 4c. Financial metrics + alpha factor computation ----
+    factor_scores: dict[str, float] = {}
+    if candidate_codes:
+        logger.info(f"[4c/7] Fetching financial metrics + computing alpha factors for {len(candidate_codes)} candidates...")
+        try:
+            fin_fetcher = FinanceFetcher()
+            fin_features = fin_fetcher.fetch_features(candidate_codes=candidate_codes)
+            metrics_map = fin_features.get("metrics_map", {})
+            if metrics_map:
+                factor_df = AlphaFactors.compute_all_factors(metrics_map)
+                if not factor_df.empty:
+                    composite = AlphaFactors.compute_composite_score(factor_df)
+                    factor_scores = composite.to_dict()
+                    top5 = sorted(factor_scores.items(), key=lambda x: x[1], reverse=True)[:5]
+                    logger.info(f"  Alpha factors computed: {len(factor_scores)} stocks "
+                                f"| top: {', '.join(f'{c}({s:.0f})' for c, s in top5)}")
+                else:
+                    logger.info("  Alpha factors: insufficient data")
+            else:
+                logger.info("  Financial metrics: no data available")
+        except Exception as e:
+            logger.warning(f"Financial factor computation failed (non-blocking): {e}")
+
+    # ---- 5. Rule scan (with technical features + event matching) ----
     logger.info("[5/7] Rule scan...")
     alerts = scanner.scan_and_format(quotes_clean, fund_flow_clean,
                                      stock_events=stock_events,
-                                     consecutive_inflow_map=consecutive_inflow_map)
+                                     consecutive_inflow_map=consecutive_inflow_map,
+                                     technical_features=technical_features,
+                                     lhb_features=lhb_features,
+                                     block_trade_features=block_trade_features)
 
     type_counts = Counter(a["alert_type"] for a in alerts)
     type_str = "  ".join(f"{k}: {v}" for k, v in type_counts.most_common())
     event_count = sum(1 for a in alerts if a.get("has_event"))
     logger.info(f"  Scan result: {len(alerts)} signals  (with events: {event_count})  ({type_str})")
+
+    # Market breadth sentiment bias
+    for a in alerts:
+        old_conf = a.get("confidence_score", 0.5)
+        new_conf = MarketBreadth.apply_sentiment_bias(old_conf, market_breadth)
+        if new_conf != old_conf:
+            a["confidence_score"] = new_conf
+            a["_sentiment_bias"] = round(new_conf - old_conf, 2)
+
+    # North flow scoring
+    if north_features:
+        for a in alerts:
+            delta = _north_flow_score(a, north_features)
+            if delta != 0:
+                old = a.get("confidence_score", 0.5)
+                a["confidence_score"] = round(max(0.0, min(1.0, old + delta)), 2)
+                a["_north_flow_delta"] = delta
+
+    # Alpha factor scoring (cross-sectional, relative to candidate universe)
+    if factor_scores:
+        for a in alerts:
+            delta = _factor_score(str(a.get("code", "")), factor_scores)
+            if delta != 0:
+                old = a.get("confidence_score", 0.5)
+                a["confidence_score"] = round(max(0.0, min(1.0, old + delta)), 2)
+                a["_factor_delta"] = delta
 
     if not alerts:
         logger.info("No anomaly signals, scan complete")
@@ -255,12 +430,87 @@ def main(dry_run: bool = False, top_n: int = 10, skip_events: bool = False):
         for alert in p1_alerts:
             webhook_notifier.send_alert(alert)
 
+    # ---- WebSocket broadcast ----
+    if p1_alerts:
+        _broadcast_alerts_ws(p1_alerts)
+
     # ---- Print summary ----
     print_summary(all_alerts)
 
     pipeline_duration.observe(time.time() - pipeline_start)
     pipeline_runs.labels(status="success").inc()
     logger.info(f"=== QuantLoom·量梭 scan complete === trace_id={trace_id}")
+
+
+def _north_flow_score(alert: dict, north: dict) -> float:
+    """北向资金背景加权 — 返回置信度修正值 delta ([-0.08, +0.10])"""
+    delta = 0.0
+
+    # 北向大幅净流入 → 整体信号可信度上升
+    net_today = north.get("north_net_inflow_today", 0) or 0
+    if net_today > 50:       # > 50亿: 显著看多
+        delta += 0.05
+    elif net_today > 20:     # > 20亿: 适量看多
+        delta += 0.03
+    elif net_today < -30:    # < -30亿: 北向避险
+        delta -= 0.05
+
+    # 流入加速 → 额外加分
+    accel = north.get("north_inflow_accel", 0) or 0
+    if accel > 30:
+        delta += 0.03
+    elif accel < -30:
+        delta -= 0.03
+
+    # 个股是否在十大成交净买入中
+    code = str(alert.get("code", ""))
+    top10_buys = north.get("north_top10_net_buy", {})
+    if code in top10_buys:
+        net_buy = float(top10_buys[code] or 0)
+        if net_buy > 3:
+            delta += 0.05  # 北向明确增持
+        elif net_buy > 0:
+            delta += 0.02
+
+    # 个股是否在北向重仓 Top20
+    holding_top = north.get("north_holding_top", [])
+    for h in holding_top:
+        if h.get("code") == code:
+            hold_ratio = h.get("hold_ratio", 0) or 0
+            if hold_ratio > 5:
+                delta += 0.03  # 北向重仓 >5%
+            elif hold_ratio > 2:
+                delta += 0.01
+            break
+
+    return round(max(-0.08, min(0.10, delta)), 2)
+
+
+def _factor_score(code: str, factor_scores: dict[str, float]) -> float:
+    """Alpha 因子背景加权 — 基于截面排名映射置信度修正值 delta ([-0.08, +0.10])"""
+    score = factor_scores.get(code)
+    if score is None:
+        return 0.0
+
+    # 计算该股票在候选集中的百分位
+    all_scores = sorted(factor_scores.values())
+    n = len(all_scores)
+    if n < 5:
+        return 0.0
+
+    rank = sum(1 for s in all_scores if s < score)
+    pct = rank / n  # 0.0 = worst, 1.0 = best
+
+    if pct >= 0.8:       # Top 20%: 优质基本面
+        return 0.10
+    elif pct >= 0.6:     # Top 40%: 良好
+        return 0.05
+    elif pct >= 0.4:     # Middle: 中性
+        return 0.0
+    elif pct >= 0.2:     # Bottom 40%: 偏弱
+        return -0.05
+    else:                 # Bottom 20%: 基本面不佳
+        return -0.08
 
 
 def _upsert_daily_fund_flow(fund_flow_df, trade_date: date):
@@ -329,6 +579,37 @@ def _compute_consecutive_inflow_map(codes: list[str], backtest_date: Optional[da
         logger.warning(f"Historical fund flow query failed: {e}")
 
     return result
+
+
+def _broadcast_alerts_ws(p1_alerts: list):
+    """WebSocket 实时推送 P1 告警到前端"""
+    try:
+        import asyncio
+        from quant_loom.api.app import broadcast_alert
+
+        async def _send():
+            for a in p1_alerts:
+                await broadcast_alert({
+                    "code": a.get("code", ""),
+                    "name": a.get("name", ""),
+                    "alert_type": a.get("alert_type", ""),
+                    "confidence_score": a.get("confidence_score", 0),
+                    "risk_level": a.get("risk_level", "P3"),
+                    "trigger_reason": (a.get("trigger_reason", "") or "")[:120],
+                    "ai_summary": a.get("ai_summary", ""),
+                })
+
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                import threading
+                threading.Thread(target=lambda: asyncio.run(_send()), daemon=True).start()
+            else:
+                loop.run_until_complete(_send())
+        except RuntimeError:
+            asyncio.run(_send())
+    except Exception as e:
+        logger.debug(f"WebSocket broadcast skipped: {e}")
 
 
 def print_summary(alerts: list):

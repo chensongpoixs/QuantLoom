@@ -270,3 +270,119 @@ class AlertFeedback(Base):
         Index("idx_af_alert_id", "alert_id"),
         Index("idx_af_verdict", "verdict"),
     )
+
+
+class NorthFlowDaily(Base):
+    """北向资金每日流向 — 沪股通/深股通净流入"""
+
+    __tablename__ = "sq_north_flow_daily"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    trade_date = Column(Date, nullable=False, comment="交易日期")
+    net_inflow_sh = Column(Numeric(20, 4), default=0, comment="沪股通净流入")
+    net_inflow_sz = Column(Numeric(20, 4), default=0, comment="深股通净流入")
+    total_net_inflow = Column(Numeric(20, 4), default=0, comment="北向资金净流入合计")
+    created_at = Column(DateTime, default=datetime.now)
+
+    __table_args__ = (
+        Index("uk_nfd_date", "trade_date", unique=True),
+    )
+
+
+class NorthHolding(Base):
+    """北向资金持仓明细 — 个股维度"""
+
+    __tablename__ = "sq_north_holdings"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    code = Column(String(10), nullable=False, comment="股票代码")
+    name = Column(String(50), comment="股票名称")
+    trade_date = Column(Date, nullable=False, comment="交易日期")
+    hold_shares = Column(Numeric(20, 4), default=0, comment="持股数量")
+    hold_market_value = Column(Numeric(20, 4), default=0, comment="持股市值")
+    hold_ratio = Column(Numeric(10, 4), default=0, comment="持股占比(%)")
+    created_at = Column(DateTime, default=datetime.now)
+
+    __table_args__ = (
+        Index("uk_nh_code_date", "code", "trade_date", unique=True),
+        Index("idx_nh_date", "trade_date"),
+    )
+
+
+class LHBDetail(Base):
+    """龙虎榜明细 — 交易日上榜个股与席位信息"""
+
+    __tablename__ = "sq_lhb_detail"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    trade_date = Column(Date, nullable=False, comment="交易日期")
+    code = Column(String(10), nullable=False, comment="股票代码")
+    name = Column(String(50), comment="股票名称")
+    close = Column(Numeric(10, 4), comment="收盘价")
+    pct_change = Column(Numeric(10, 4), comment="涨跌幅(%)")
+    turnover_rate = Column(Numeric(10, 4), comment="换手率(%)")
+    lhb_net_amount = Column(Numeric(20, 4), comment="龙虎榜净买额")
+    lhb_buy_amount = Column(Numeric(20, 4), comment="龙虎榜买入额")
+    lhb_sell_amount = Column(Numeric(20, 4), comment="龙虎榜卖出额")
+    reason = Column(String(200), comment="上榜原因")
+    has_inst_seat = Column(Boolean, default=False, comment="是否有机构席位参与")
+    created_at = Column(DateTime, default=datetime.now)
+
+    __table_args__ = (
+        Index("uk_lhb_code_date", "code", "trade_date", unique=True),
+        Index("idx_lhb_date", "trade_date"),
+    )
+
+
+class MarketBreadthSnapshot(Base):
+    """市场宽度快照 — 全市场情绪指标每日快照"""
+
+    __tablename__ = "sq_market_breadth"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    ts = Column(DateTime, default=datetime.now, comment="快照时间")
+    limit_up_count = Column(Integer, default=0, comment="涨停家数")
+    limit_down_count = Column(Integer, default=0, comment="跌停家数")
+    up_count = Column(Integer, default=0, comment="上涨家数")
+    down_count = Column(Integer, default=0, comment="下跌家数")
+    flat_count = Column(Integer, default=0, comment="平盘家数")
+    up_down_ratio = Column(Numeric(10, 4), default=0, comment="涨跌比")
+    adl = Column(Integer, default=0, comment="腾落指数 (上涨-下跌)")
+    broken_board_count = Column(Integer, default=0, comment="炸板家数")
+    avg_pct_change = Column(Numeric(10, 4), default=0, comment="全市场平均涨跌幅(%)")
+    total_turnover = Column(Numeric(20, 4), default=0, comment="全市场总成交额")
+    limit_up_pct = Column(Numeric(10, 4), default=0, comment="涨停率(%)")
+    limit_down_pct = Column(Numeric(10, 4), default=0, comment="跌停率(%)")
+    sentiment = Column(String(10), default="neutral", comment="市场情绪: bullish/neutral/bearish")
+    created_at = Column(DateTime, default=datetime.now)
+
+    __table_args__ = (
+        Index("idx_mb_ts", "ts"),
+    )
+
+
+class FinancialMetrics(Base):
+    """财务指标表 — 个股估值与基本面快照"""
+
+    __tablename__ = "sq_financial_metrics"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    code = Column(String(10), nullable=False, comment="股票代码")
+    report_date = Column(Date, nullable=False, comment="报告期")
+    pe = Column(Numeric(10, 4), comment="市盈率")
+    pb = Column(Numeric(10, 4), comment="市净率")
+    ps = Column(Numeric(10, 4), comment="市销率")
+    roe = Column(Numeric(10, 4), comment="净资产收益率(%)")
+    roa = Column(Numeric(10, 4), comment="总资产报酬率(%)")
+    gross_margin = Column(Numeric(10, 4), comment="销售毛利率(%)")
+    net_margin = Column(Numeric(10, 4), comment="销售净利率(%)")
+    debt_ratio = Column(Numeric(10, 4), comment="资产负债率(%)")
+    revenue_yoy = Column(Numeric(10, 4), comment="营收同比增长(%)")
+    net_profit_yoy = Column(Numeric(10, 4), comment="净利润同比增长(%)")
+    eps = Column(Numeric(10, 4), comment="每股收益")
+    created_at = Column(DateTime, default=datetime.now)
+
+    __table_args__ = (
+        Index("uk_fin_code_date", "code", "report_date", unique=True),
+        Index("idx_fin_date", "report_date"),
+    )

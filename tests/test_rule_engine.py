@@ -315,3 +315,196 @@ class TestAlertResult:
         )
         assert r.matched is True
         assert r.alert_type == "breakout"
+
+
+class TestGapFill:
+    """缺口回补型"""
+
+    def test_gap_up_fill_detected(self, engine):
+        row = pd.Series({
+            "volume_ratio": 1.5,
+            "main_force_ratio": 10.0,
+        })
+        tech = {"prev_close": 50.0, "today_open": 52.0, "today_high": 53.0, "today_low": 50.0}
+        result = engine.check_gap_fill(row, tech=tech)
+        assert result.matched is True
+        assert result.alert_type == "gap_fill"
+
+    def test_gap_down_fill_detected(self, engine):
+        row = pd.Series({
+            "volume_ratio": 1.5,
+            "main_force_ratio": -8.0,
+        })
+        tech = {"prev_close": 50.0, "today_open": 48.0, "today_high": 50.0, "today_low": 47.0}
+        result = engine.check_gap_fill(row, tech=tech)
+        assert result.matched is True
+        assert result.alert_type == "gap_fill"
+
+    def test_no_gap_no_alert(self, engine):
+        row = pd.Series({"volume_ratio": 1.5, "main_force_ratio": 10.0})
+        tech = {"prev_close": 50.0, "today_open": 50.2, "today_high": 51.0, "today_low": 49.8}
+        result = engine.check_gap_fill(row, tech=tech)
+        assert not result.matched
+
+    def test_no_tech_data(self, engine):
+        row = pd.Series({"volume_ratio": 1.5, "main_force_ratio": 10.0})
+        result = engine.check_gap_fill(row, tech=None)
+        assert not result.matched
+
+    def test_low_volume_no_alert(self, engine):
+        row = pd.Series({"volume_ratio": 1.0, "main_force_ratio": 10.0})
+        tech = {"prev_close": 50.0, "today_open": 52.0, "today_high": 53.0, "today_low": 50.0}
+        result = engine.check_gap_fill(row, tech=tech)
+        assert not result.matched
+
+
+class TestBlockTrade:
+    """大宗交易异动型"""
+
+    def test_premium_block_trade(self, engine):
+        row = pd.Series({"code": "000001"})
+        bt = {"000001": {"premium": 5.0, "trade_amount": 10000}}
+        result = engine.check_block_trade(row, block_trades=bt)
+        assert result.matched is True
+        assert result.alert_type == "block_trade"
+
+    def test_discount_block_trade(self, engine):
+        row = pd.Series({"code": "000001"})
+        bt = {"000001": {"premium": -8.0, "trade_amount": 10000}}
+        result = engine.check_block_trade(row, block_trades=bt)
+        assert result.matched is True
+        assert result.alert_type == "block_trade"
+
+    def test_small_trade_no_alert(self, engine):
+        row = pd.Series({"code": "000001"})
+        bt = {"000001": {"premium": 5.0, "trade_amount": 1000}}
+        result = engine.check_block_trade(row, block_trades=bt)
+        assert not result.matched
+
+    def test_small_premium_no_alert(self, engine):
+        row = pd.Series({"code": "000001"})
+        bt = {"000001": {"premium": 1.0, "trade_amount": 10000}}
+        result = engine.check_block_trade(row, block_trades=bt)
+        assert not result.matched
+
+    def test_code_not_in_bt(self, engine):
+        row = pd.Series({"code": "000002"})
+        bt = {"000001": {"premium": 5.0, "trade_amount": 10000}}
+        result = engine.check_block_trade(row, block_trades=bt)
+        assert not result.matched
+
+    def test_no_block_trades(self, engine):
+        row = pd.Series({"code": "000001"})
+        result = engine.check_block_trade(row, block_trades=None)
+        assert not result.matched
+
+
+class TestHighTurnoverLowReturn:
+    """高换手低涨幅型"""
+
+    def test_high_turnover_low_return_matched(self, engine):
+        row = pd.Series({
+            "turnover_rate": 15.0,
+            "pct_change": 1.0,
+            "turnover_amount": 200_000_000,
+            "main_force_ratio": 2.0,
+        })
+        result = engine.check_high_turnover_low_return(row)
+        assert result.matched is True
+        assert result.alert_type == "high_turnover_low_return"
+
+    def test_normal_turnover_no_alert(self, engine):
+        row = pd.Series({
+            "turnover_rate": 3.0,
+            "pct_change": 1.0,
+            "turnover_amount": 200_000_000,
+        })
+        result = engine.check_high_turnover_low_return(row)
+        assert not result.matched
+
+    def test_large_move_no_alert(self, engine):
+        row = pd.Series({
+            "turnover_rate": 15.0,
+            "pct_change": 5.0,
+            "turnover_amount": 200_000_000,
+        })
+        result = engine.check_high_turnover_low_return(row)
+        assert not result.matched
+
+    def test_low_amount_no_alert(self, engine):
+        row = pd.Series({
+            "turnover_rate": 15.0,
+            "pct_change": 0.5,
+            "turnover_amount": 10_000_000,
+        })
+        result = engine.check_high_turnover_low_return(row)
+        assert not result.matched
+
+    def test_negative_return_still_matched(self, engine):
+        row = pd.Series({
+            "turnover_rate": 12.0,
+            "pct_change": -1.5,
+            "turnover_amount": 300_000_000,
+            "main_force_ratio": -3.0,
+        })
+        result = engine.check_high_turnover_low_return(row)
+        assert result.matched is True
+
+
+class TestIntradaySpike:
+    """盘中急拉/急跌型"""
+
+    def test_spike_up_detected(self, engine):
+        row = pd.Series({
+            "pct_change": 3.0,
+            "turnover_amount": 200_000_000,
+        })
+        tech = {"today_open": 50.0, "today_high": 53.0, "today_low": 49.5}
+        result = engine.check_intraday_spike(row, tech=tech)
+        assert result.matched is True
+        assert result.alert_type == "intraday_spike"
+
+    def test_spike_down_detected(self, engine):
+        row = pd.Series({
+            "pct_change": -3.0,
+            "turnover_amount": 200_000_000,
+        })
+        tech = {"today_open": 50.0, "today_high": 50.5, "today_low": 47.0}
+        result = engine.check_intraday_spike(row, tech=tech)
+        assert result.matched is True
+        assert result.alert_type == "intraday_spike"
+
+    def test_wide_range_detected(self, engine):
+        row = pd.Series({
+            "pct_change": 0.0,
+            "turnover_amount": 200_000_000,
+        })
+        tech = {"today_open": 50.0, "today_high": 54.0, "today_low": 46.5}
+        result = engine.check_intraday_spike(row, tech=tech)
+        assert result.matched is True
+
+    def test_normal_range_no_alert(self, engine):
+        row = pd.Series({
+            "pct_change": 0.5,
+            "turnover_amount": 200_000_000,
+        })
+        tech = {"today_open": 50.0, "today_high": 51.0, "today_low": 49.5}
+        result = engine.check_intraday_spike(row, tech=tech)
+        assert not result.matched
+
+    def test_no_tech_data(self, engine):
+        row = pd.Series({
+            "pct_change": 3.0,
+            "turnover_amount": 200_000_000,
+        })
+        result = engine.check_intraday_spike(row, tech=None)
+        assert not result.matched
+
+    def test_low_amount_no_alert(self, engine):
+        row = pd.Series({
+            "pct_change": 3.0,
+            "turnover_amount": 10_000_000,
+        })
+        tech = {"today_open": 50.0, "today_high": 53.0, "today_low": 49.5}
+        result = engine.check_intraday_spike(row, tech=tech)
+        assert not result.matched

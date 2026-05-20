@@ -76,7 +76,10 @@ class MarketScanner:
              consecutive_inflow_map: Optional[Dict[str, int]] = None,
              current_time: Optional[datetime] = None,
              backtest_mode: bool = False,
-             near_250d_low_map: Optional[Dict[str, bool]] = None) -> List[Tuple[AlertResult, pd.Series]]:
+             near_250d_low_map: Optional[Dict[str, bool]] = None,
+             lhb_features: Optional[dict] = None,
+             technical_features: Optional[Dict[str, dict]] = None,
+             block_trade_features: Optional[Dict[str, dict]] = None) -> List[Tuple[AlertResult, pd.Series]]:
         """
         执行全市场扫描
 
@@ -157,6 +160,46 @@ class MarketScanner:
                         result.details["code"] = code
                         alerts.append((result, row))
 
+            # 6. 龙虎榜追踪
+            if lhb_features:
+                result = self.engine.check_lhb_tracking(
+                    row,
+                    lhb_stocks=lhb_features.get("lhb_stocks"),
+                    lhb_inst_stocks=lhb_features.get("lhb_inst_stocks"),
+                    lhb_top_month=lhb_features.get("lhb_top_month"),
+                )
+                if result.matched:
+                    result.details["code"] = code
+                    alerts.append((result, row))
+
+            # 7. 缺口回补
+            tech = (technical_features or {}).get(code)
+            if tech:
+                result = self.engine.check_gap_fill(row, tech=tech)
+                if result.matched:
+                    result.details["code"] = code
+                    alerts.append((result, row))
+
+            # 8. 大宗交易
+            if block_trade_features:
+                result = self.engine.check_block_trade(row, block_trades=block_trade_features)
+                if result.matched:
+                    result.details["code"] = code
+                    alerts.append((result, row))
+
+            # 9. 高换手低涨幅 (无需额外数据，仅用行情字段)
+            result = self.engine.check_high_turnover_low_return(row)
+            if result.matched:
+                result.details["code"] = code
+                alerts.append((result, row))
+
+            # 10. 盘中急拉/急跌
+            if tech:
+                result = self.engine.check_intraday_spike(row, tech=tech)
+                if result.matched:
+                    result.details["code"] = code
+                    alerts.append((result, row))
+
         sorted_alerts = sorted(alerts, key=lambda x: x[0].confidence_score, reverse=True)
         logger.info(f"Scan complete: found {len(sorted_alerts)} anomaly signals")
         return sorted_alerts
@@ -167,7 +210,10 @@ class MarketScanner:
                         consecutive_inflow_map: Optional[Dict[str, int]] = None,
                         backtest_date: Optional[date] = None,
                         backtest_mode: bool = False,
-                        near_250d_low_map: Optional[Dict[str, bool]] = None) -> List[dict]:
+                        near_250d_low_map: Optional[Dict[str, bool]] = None,
+                        technical_features: Optional[Dict[str, dict]] = None,
+                        lhb_features: Optional[dict] = None,
+                        block_trade_features: Optional[Dict[str, dict]] = None) -> List[dict]:
         """
         扫描并返回格式化字典列表（便于入库和 AI 分析）
         每个 dict 包含完整的上游数据字段
@@ -175,12 +221,17 @@ class MarketScanner:
         backtest_date: 回测日期 — ts 字段使用此日期，None 时使用当前时间
         backtest_mode: 回测模式 — 跳过事件驱动规则
         near_250d_low_map: 回测模式下的真实 250 日低位映射
+        technical_features: {code: {ma5, ma10, rsi14, macd_dif, ...}} 技术面特征字典
+        block_trade_features: {code: {premium, trade_amount, ...}} 大宗交易特征
         """
         results = self.scan(quotes_df, fund_flow_df, sector_stats,
                            stock_events=stock_events,
                            consecutive_inflow_map=consecutive_inflow_map,
                            backtest_mode=backtest_mode,
-                           near_250d_low_map=near_250d_low_map)
+                           near_250d_low_map=near_250d_low_map,
+                           lhb_features=lhb_features,
+                           technical_features=technical_features,
+                           block_trade_features=block_trade_features)
 
         formatted = []
         for alert, row in results:
@@ -205,6 +256,10 @@ class MarketScanner:
                 "risk_level": alert.risk_level,
                 "has_event": alert.details.get("has_event", False),
             })
+
+        # 技术面共振评分: 基于技术指标修正置信度
+        if technical_features:
+            _apply_technical_resonance(formatted, technical_features)
 
         # 置信度校准: 基于历史反馈精度修正入库值 (不影响规则匹配)
         _calibrate_confidence_scores(formatted)
@@ -310,3 +365,82 @@ def _calibrate_confidence_scores(formatted: list) -> None:
                     )
     except Exception as e:
         logger.warning(f"Confidence calibration failed: {e}")
+
+
+def _apply_technical_resonance(formatted: list, technical_features: dict) -> None:
+    """
+    技术面共振评分 — 基于技术指标修正置信度
+
+    修正规则 (每项最多 ±0.10):
+    - MACD 金叉 (DIF > DEA 且 hist > 0): +0.05
+    - MACD 死叉 (DIF < DEA 且 hist < 0): -0.05
+    - RSI14 在 30-70 之间 (非超买超卖): +0.03
+    - RSI14 < 30 (超卖/底部): +0.08 (适合 accumulation)
+    - RSI14 > 80 (超买): -0.05
+    - 均线多头排列: +0.08
+    - 均线空头排列: -0.05 (不适合 breakout 类)
+    - MA5/20 金叉 3 日内: +0.05
+    - 价格站上 MA20: +0.03
+    - 布林带收窄 (boll_width < 0.1): +0.03 (变盘信号)
+    - KDJ J < 0 (超卖): +0.05
+    """
+    if not technical_features:
+        return
+
+    for alert_dict in formatted:
+        code = alert_dict.get("code", "")
+        tech = technical_features.get(code)
+        if not tech:
+            continue
+
+        score_delta = 0.0
+        alert_type = alert_dict.get("alert_type", "")
+
+        # MACD
+        macd_dif = tech.get("macd_dif", 0) or 0
+        macd_hist = tech.get("macd_hist", 0) or 0
+        if macd_dif > 0 and macd_hist > 0:
+            score_delta += 0.05
+        elif macd_dif < 0 and macd_hist < 0:
+            score_delta -= 0.05
+
+        # RSI
+        rsi14 = tech.get("rsi14", 50) or 50
+        if rsi14 < 30:
+            score_delta += 0.08 if alert_type == "accumulation" else 0.04
+        elif rsi14 > 80:
+            score_delta -= 0.05
+        elif 30 <= rsi14 <= 70:
+            score_delta += 0.03
+
+        # 均线排列
+        if tech.get("is_bullish"):
+            score_delta += 0.08
+        elif tech.get("is_bearish"):
+            score_delta -= 0.05 if alert_type != "accumulation" else 0
+
+        # 金叉
+        if tech.get("golden_cross"):
+            score_delta += 0.05
+
+        # 价格位置
+        price_vs = tech.get("price_vs_ma", {})
+        vs_ma20 = price_vs.get("vs_ma20", 0) or 0
+        if vs_ma20 > 0:
+            score_delta += 0.03
+
+        # 布林带
+        boll_width = tech.get("boll_width", 0.2) or 0.2
+        if boll_width < 0.1:
+            score_delta += 0.03
+
+        # KDJ 超卖
+        kdj_j = tech.get("kdj_j", 50) or 50
+        if kdj_j < 0:
+            score_delta += 0.05
+
+        # 应用修正，限制变化范围 ±0.20
+        score_delta = max(-0.20, min(0.20, score_delta))
+        old_score = alert_dict.get("confidence_score", 0.5)
+        alert_dict["confidence_score"] = round(max(0.0, min(1.0, old_score + score_delta)), 2)
+        alert_dict["_tech_resonance_delta"] = round(score_delta, 2)

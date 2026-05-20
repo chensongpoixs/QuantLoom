@@ -5,6 +5,9 @@
         <span class="brand-icon">Q</span>
         <span>QuantLoom·量梭</span>
       </router-link>
+      <button class="theme-toggle" @click="toggleTheme" :aria-label="isDark ? '切换到亮色' : '切换到暗色'">
+        {{ isDark ? '☀️' : '🌙' }}
+      </button>
       <button class="menu-toggle" @click="open = !open" aria-label="Menu">
         {{ open ? '✕' : '☰' }}
       </button>
@@ -26,6 +29,18 @@
       <span class="alert-banner-dot blink"></span>
       <span class="alert-banner-text">发现 {{ newP1Count }} 个新的 P1 高风险信号</span>
       <button class="alert-banner-close" @click.stop="dismissBanner">✕</button>
+    </div>
+  </Transition>
+
+  <!-- WebSocket real-time toast -->
+  <Transition name="slide">
+    <div v-if="wsToast" class="ws-toast" @click="router.push('/alerts/' + (wsToast as any).db_id || '/alerts')">
+      <span class="ws-toast-icon">⚡</span>
+      <div class="ws-toast-body">
+        <div class="ws-toast-title">{{ wsToast.name }} ({{ wsToast.code }})</div>
+        <div class="ws-toast-detail">{{ wsToast.alert_type }} · 置信度 {{ (wsToast.confidence_score * 100).toFixed(0) }}%</div>
+      </div>
+      <button class="ws-toast-close" @click.stop="wsToast = null">✕</button>
     </div>
   </Transition>
 
@@ -55,10 +70,60 @@
 import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import api from '@/api'
+import { useWebSocket, type WsAlert } from '@/composables/useWebSocket'
 
 const route = useRoute()
 const router = useRouter()
 const open = ref(false)
+
+// WebSocket real-time alerts
+const { onAlert } = useWebSocket()
+const wsToast = ref<WsAlert | null>(null)
+let wsToastTimer: ReturnType<typeof setTimeout> | null = null
+
+function showWsToast(alert: WsAlert) {
+  wsToast.value = alert
+  if (wsToastTimer) clearTimeout(wsToastTimer)
+  wsToastTimer = setTimeout(() => {
+    wsToast.value = null
+  }, 6000)
+}
+
+let unregWs: (() => void) | null = null
+
+// Theme toggle
+const isDark = ref(false)
+
+function getStoredTheme(): string | null {
+  try {
+    return localStorage.getItem('quantloom-theme')
+  } catch {
+    return null
+  }
+}
+
+function applyTheme(dark: boolean) {
+  isDark.value = dark
+  document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light')
+  try {
+    localStorage.setItem('quantloom-theme', dark ? 'dark' : 'light')
+  } catch { /* ignore */ }
+}
+
+function toggleTheme() {
+  applyTheme(!isDark.value)
+}
+
+// Initialize theme on mount
+function initTheme() {
+  const stored = getStoredTheme()
+  if (stored) {
+    applyTheme(stored === 'dark')
+  }
+  // No stored preference: :root handles it via prefers-color-scheme media query
+}
+
+initTheme()
 
 // Notification polling
 const newNotifCount = ref(0)
@@ -130,13 +195,37 @@ watch(
   },
 )
 
-onMounted(startPolling)
-onUnmounted(stopPolling)
+onMounted(() => {
+  startPolling()
+  unregWs = onAlert((alert: WsAlert) => {
+    showWsToast(alert)
+  })
+})
+onUnmounted(() => {
+  stopPolling()
+  if (unregWs) unregWs()
+  if (wsToastTimer) clearTimeout(wsToastTimer)
+})
 </script>
 
 <style scoped>
 .notif-nav-link {
   position: relative;
+}
+
+.theme-toggle {
+  background: none;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  font-size: 1.1rem;
+  cursor: pointer;
+  padding: 4px 8px;
+  line-height: 1;
+  transition: background var(--transition);
+  margin-right: 4px;
+}
+.theme-toggle:hover {
+  background: var(--bg-secondary);
 }
 
 .notif-badge {
@@ -227,6 +316,66 @@ onUnmounted(stopPolling)
 /* Bottom tab bar — mobile only */
 .bottom-tabs {
   display: none;
+}
+
+/* WebSocket real-time toast */
+.ws-toast {
+  position: fixed;
+  top: 64px;
+  right: 16px;
+  z-index: 210;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--accent-blue);
+  border-left: 4px solid var(--accent-blue);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-md);
+  cursor: pointer;
+  max-width: 380px;
+  width: calc(100% - 32px);
+  transition: background var(--transition);
+}
+.ws-toast:hover {
+  background: var(--bg-hover);
+}
+
+.ws-toast-icon {
+  font-size: 1.2rem;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.ws-toast-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.ws-toast-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ws-toast-detail {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.ws-toast-close {
+  background: none;
+  border: none;
+  font-size: 0.9rem;
+  cursor: pointer;
+  color: var(--text-muted);
+  padding: 2px;
+  flex-shrink: 0;
 }
 
 @media (max-width: 767px) {

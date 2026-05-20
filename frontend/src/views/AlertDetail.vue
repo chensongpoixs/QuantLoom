@@ -55,6 +55,18 @@
         </div>
       </div>
 
+      <!-- K-Line Chart -->
+      <div class="section" v-if="alert.code">
+        <div class="section-title">K 线图 · 技术指标</div>
+        <KLineChart
+          :data="klineData"
+          :loading="klineLoading"
+          :error="klineError"
+          :show-m-a-c-d="true"
+          :show-b-o-l-l="true"
+        />
+      </div>
+
       <!-- Trigger Reason -->
       <div class="section" v-if="alert.trigger_reason">
         <div class="section-title">触发原因</div>
@@ -163,6 +175,8 @@ import type { BacktestTypeStats } from '@/types'
 import RiskBadge from '@/components/RiskBadge.vue'
 import ErrorBanner from '@/components/ErrorBanner.vue'
 import ConfidenceGauge from '@/components/ConfidenceGauge.vue'
+import KLineChart from '@/components/KLineChart.vue'
+import type { KlineRecord } from '@/components/KLineChart.vue'
 import EventTimeline from '@/components/EventTimeline.vue'
 import BacktestComparison from '@/components/BacktestComparison.vue'
 import FundFlowStack from '@/components/FundFlowStack.vue'
@@ -179,6 +193,11 @@ const backtestData = ref<BacktestTypeStats | null>(null)
 const toastRef = ref<InstanceType<typeof Toast> | null>(null)
 const fbSubmitting = ref(false)
 
+// K-line chart state
+const klineData = ref<KlineRecord[] | null>(null)
+const klineLoading = ref(false)
+const klineError = ref<string | null>(null)
+
 const fundFlowBreakdown = computed<FundFlowBreakdown[] | null>(() => {
   const a = alert.value
   if (!a) return null
@@ -193,6 +212,20 @@ const fundFlowBreakdown = computed<FundFlowBreakdown[] | null>(() => {
 })
 
 const id = computed(() => Number(route.params.id))
+
+async function fetchKline() {
+  if (!alert.value?.code) return
+  klineLoading.value = true
+  klineError.value = null
+  try {
+    const resp = (await api.get(`/kline/${alert.value.code}`)) as { code: string; kline: KlineRecord[] }
+    klineData.value = resp.kline ?? null
+  } catch (e: any) {
+    klineError.value = e?.response?.data?.detail || e?.message || 'K线数据加载失败'
+  } finally {
+    klineLoading.value = false
+  }
+}
 
 async function fetchBacktest() {
   try {
@@ -218,7 +251,10 @@ async function submitFeedback(verdict: 'correct' | 'incorrect' | 'ambiguous') {
   }
 }
 
-watch(alert, (a) => { if (a?.alert_type) fetchBacktest() })
+watch(alert, (a) => {
+  if (a?.code) fetchKline()
+  if (a?.alert_type) fetchBacktest()
+})
 
 onMounted(() => store.fetchDetail(id.value))
 onUnmounted(() => { store.alertDetail = null })

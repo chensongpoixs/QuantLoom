@@ -5,6 +5,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch } from 'vue'
 import * as echarts from 'echarts'
+import { getEchartsTheme } from '@/utils/echarts-theme'
 import type { FundFlowItem } from '@/types'
 
 const props = defineProps<{
@@ -78,7 +79,7 @@ function render() {
 
 onMounted(() => {
   if (chartRef.value) {
-    chart = echarts.init(chartRef.value, 'quantloom')
+    chart = echarts.init(chartRef.value, getEchartsTheme())
     window.addEventListener('resize', () => chart?.resize())
     render()
   }

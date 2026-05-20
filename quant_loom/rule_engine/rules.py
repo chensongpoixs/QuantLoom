@@ -275,6 +275,330 @@ class RuleEngine:
         )
 
     # ================================================================
+    # 6. 龙虎榜追踪型
+    # ================================================================
+    def check_lhb_tracking(self, row: pd.Series,
+                           lhb_stocks: Optional[Dict[str, dict]] = None,
+                           lhb_inst_stocks: Optional[list] = None,
+                           lhb_top_month: Optional[Dict[str, dict]] = None) -> AlertResult:
+        """
+        龙虎榜机构/游资行为追踪
+        - 机构席位净买入额大 → 触发
+        - 知名游资席位出现 + 成交额放大 → 触发
+        - 连续/频繁上榜 → 提高置信度
+        """
+        cfg = self.config.get("lhb_tracking", {})
+        if not cfg.get("enabled", True):
+            return AlertResult()
+
+        code = str(row.get("code", ""))
+        if not code or not lhb_stocks:
+            return AlertResult()
+
+        lhb_info = lhb_stocks.get(code)
+        if not lhb_info:
+            return AlertResult()
+
+        net_amount = abs(lhb_info.get("net_amount", 0))
+        lhb_inst_stocks = lhb_inst_stocks or []
+        has_inst = code in lhb_inst_stocks
+        lhb_top_month = lhb_top_month or {}
+        top_info = lhb_top_month.get(code, {})
+        on_board_count = top_info.get("count", 1) if top_info else 1
+
+        # 最低净买额
+        net_min = cfg.get("lhb_net_amount_min", 5000)  # 万元
+        if net_amount < net_min:
+            return AlertResult()
+
+        # 置信度计算
+        score = 0.50
+        reason_parts = [f"LHB net buy={net_amount:.0f}万"]
+
+        # 机构席位加分
+        if has_inst:
+            score += 0.20
+            reason_parts.append("institutional seats present")
+        else:
+            # 无机构但净买额大 → 游资主导
+            if net_amount >= cfg.get("retail_lhb_threshold", 20000):
+                score += 0.10
+                reason_parts.append("large retail/游资 driven")
+
+        # 频繁上榜
+        if on_board_count >= 3:
+            score += 0.15
+            reason_parts.append(f"frequent on board ({on_board_count}x)")
+        elif on_board_count >= 2:
+            score += 0.08
+            reason_parts.append(f"recently on board ({on_board_count}x)")
+
+        # 涨幅 + 成交额验证
+        pct = abs(float(row.get("pct_change", 0) or 0))
+        if pct >= 5:
+            score += 0.05
+            reason_parts.append(f"strong move {pct:+.1f}%")
+
+        score = min(score, 0.95)
+        risk = "P1" if score >= 0.75 else "P2"
+
+        return AlertResult(
+            matched=True,
+            alert_type="lhb_tracking",
+            trigger_reason="; ".join(reason_parts),
+            confidence_score=score,
+            risk_level=risk,
+            details={
+                "code": code,
+                "net_amount": lhb_info.get("net_amount", 0),
+                "has_inst": has_inst,
+                "on_board_count": on_board_count,
+            },
+        )
+
+    # ================================================================
+    # 7. 缺口回补型
+    # ================================================================
+    def check_gap_fill(self, row: pd.Series, tech: Optional[dict] = None) -> AlertResult:
+        """
+        跳空高开/低开后回补缺口 — 价格回到前收盘价附近
+        需要 K 线技术特征 (prev_close + today open/high/low)
+        """
+        cfg = self.config.get("gap_fill", {})
+        if not cfg.get("enabled", True):
+            return AlertResult()
+
+        if not tech:
+            return AlertResult()
+
+        prev_close = float(tech.get("prev_close", 0) or 0)
+        today_open = float(tech.get("today_open", 0) or 0)
+        today_high = float(tech.get("today_high", 0) or 0)
+        today_low = float(tech.get("today_low", 0) or 0)
+
+        if prev_close <= 0 or today_open <= 0:
+            return AlertResult()
+
+        gap_pct = (today_open - prev_close) / prev_close * 100
+        gap_min = cfg.get("gap_pct_min", 1.5)
+
+        # Detect gap direction and fill
+        fill_detected = False
+        gap_type = ""
+        if gap_pct >= gap_min:
+            gap_type = "gap_up"
+            # Gap up: low crosses below prev_close → filling the gap downward
+            if today_low <= prev_close:
+                fill_pct = (today_open - today_low) / (today_open - prev_close) * 100 if (today_open - prev_close) > 0 else 0
+                if fill_pct >= cfg.get("fill_pct_min", 30):
+                    fill_detected = True
+        elif gap_pct <= -gap_min:
+            gap_type = "gap_down"
+            # Gap down: high crosses above prev_close → filling the gap upward
+            if today_high >= prev_close:
+                fill_pct = (today_high - today_open) / (prev_close - today_open) * 100 if (prev_close - today_open) > 0 else 0
+                if fill_pct >= cfg.get("fill_pct_min", 30):
+                    fill_detected = True
+
+        if not fill_detected:
+            return AlertResult()
+
+        # Volume confirmation
+        vol_ratio = float(row.get("volume_ratio", 0) or 0)
+        if vol_ratio < cfg.get("volume_ratio_min", 1.2):
+            return AlertResult()
+
+        main_force = float(row.get("main_force_ratio", 0) or 0)
+        if abs(main_force) < cfg.get("main_force_ratio_min", 5.0):
+            return AlertResult()
+
+        # Score: gap size + fill completeness + volume
+        score = 0.45
+        score += 0.15 * min(abs(gap_pct) / 5, 1)      # larger gap = more significant
+        score += 0.20 * min(vol_ratio / 2, 1)           # volume confirmation
+        score += 0.20 * (1 if main_force > 0 else 0.5)  # direction alignment
+
+        reason = (f"Gap fill ({gap_type}): gap={gap_pct:+.1f}%, "
+                  f"fill, vol_ratio={vol_ratio:.1f}x, main_force={main_force:.1f}%")
+        return AlertResult(
+            matched=True,
+            alert_type="gap_fill",
+            trigger_reason=reason,
+            confidence_score=min(score, 0.90),
+            risk_level="P1" if score >= 0.70 else "P2",
+            details={"gap_type": gap_type, "gap_pct": round(gap_pct, 2), "vol_ratio": vol_ratio},
+        )
+
+    # ================================================================
+    # 8. 大宗交易异动型
+    # ================================================================
+    def check_block_trade(self, row: pd.Series,
+                          block_trades: Optional[Dict[str, dict]] = None) -> AlertResult:
+        """
+        大宗交易折溢价率异常 — 大额折价/溢价交易可能预示筹码转移
+        """
+        cfg = self.config.get("block_trade", {})
+        if not cfg.get("enabled", True):
+            return AlertResult()
+
+        code = str(row.get("code", ""))
+        if not code or not block_trades or code not in block_trades:
+            return AlertResult()
+
+        bt = block_trades[code]
+        trade_amount = float(bt.get("trade_amount", 0) or 0)  # 万元
+        premium = float(bt.get("premium", 0) or 0)  # 折溢价率 %
+
+        # Filter: minimum trade size
+        if trade_amount < cfg.get("trade_amount_min", 5000):
+            return AlertResult()
+
+        # Significant premium or discount
+        premium_threshold = cfg.get("premium_threshold", 3.0)
+        discount_threshold = cfg.get("discount_threshold", 5.0)
+
+        if abs(premium) < min(premium_threshold, abs(discount_threshold)):
+            return AlertResult()
+
+        is_premium = premium > premium_threshold
+        is_discount = premium < -discount_threshold
+
+        if not (is_premium or is_discount):
+            return AlertResult()
+
+        direction = "premium" if is_premium else "discount"
+        score = 0.45
+        score += 0.20 * min(abs(premium) / 10, 1)     # magnitude of premium/discount
+        score += 0.15 * min(trade_amount / 20000, 1)   # trade size
+        if is_premium:
+            score += 0.15                               # premium = bullish signal
+
+        reason = (f"Block trade ({direction}): {premium:+.1f}%, "
+                  f"amount={trade_amount:.0f}万")
+        return AlertResult(
+            matched=True,
+            alert_type="block_trade",
+            trigger_reason=reason,
+            confidence_score=min(score, 0.90),
+            risk_level="P1" if score >= 0.70 else "P2",
+            details={"premium": premium, "trade_amount": trade_amount},
+        )
+
+    # ================================================================
+    # 9. 高换手低涨幅型
+    # ================================================================
+    def check_high_turnover_low_return(self, row: pd.Series) -> AlertResult:
+        """
+        成交极度活跃但价格变化极小 — 可能换庄/洗盘/对倒
+        """
+        cfg = self.config.get("high_turnover_low_return", {})
+        if not cfg.get("enabled", True):
+            return AlertResult()
+
+        turnover_rate = float(row.get("turnover_rate", 0) or 0)
+        pct_change = float(row.get("pct_change", 0) or 0)
+        turnover_amount = float(row.get("turnover_amount", 0) or 0)
+
+        # High turnover, low price change
+        if turnover_rate < cfg.get("turnover_rate_min", 10.0):
+            return AlertResult()
+        if abs(pct_change) > cfg.get("pct_change_max", 2.0):
+            return AlertResult()
+        if turnover_amount < cfg.get("turnover_amount_min", 100000000):  # 1亿
+            return AlertResult()
+
+        main_force = float(row.get("main_force_ratio", 0) or 0)
+
+        score = 0.40
+        score += 0.20 * min(turnover_rate / 20, 1)           # higher turnover = more suspicious
+        score += 0.15 * (1 - abs(pct_change) / 2)             # lower price change = more suspicious
+        score += 0.15 * min(turnover_amount / 5e8, 1)         # larger amount
+        # Main force near zero (balanced) or slightly negative = distribution
+        if -5 < main_force < 5:
+            score += 0.10  # balanced = position transfer signal
+
+        reason = (f"High turnover low return: turnover={turnover_rate:.1f}%, "
+                  f"pct={pct_change:+.2f}%, amount={turnover_amount/1e8:.1f}亿")
+        return AlertResult(
+            matched=True,
+            alert_type="high_turnover_low_return",
+            trigger_reason=reason,
+            confidence_score=min(score, 0.85),
+            risk_level="P2",
+            details={"turnover_rate": turnover_rate, "pct_change": pct_change},
+        )
+
+    # ================================================================
+    # 10. 盘中急拉/急跌型
+    # ================================================================
+    def check_intraday_spike(self, row: pd.Series, tech: Optional[dict] = None) -> AlertResult:
+        """
+        盘中快速拉升或下跌 — 日内振幅异常，可能为突发消息或操纵
+        使用日线 high/low/open 作为盘中波动代理
+        """
+        cfg = self.config.get("intraday_spike", {})
+        if not cfg.get("enabled", True):
+            return AlertResult()
+
+        if not tech:
+            return AlertResult()
+
+        today_open = float(tech.get("today_open", 0) or 0)
+        today_high = float(tech.get("today_high", 0) or 0)
+        today_low = float(tech.get("today_low", 0) or 0)
+
+        if today_open <= 0:
+            return AlertResult()
+
+        pct_change = float(row.get("pct_change", 0) or 0)
+        turnover_amount = float(row.get("turnover_amount", 0) or 0)
+
+        # Intraday range
+        high_rise = (today_high - today_open) / today_open * 100   # intraday rally %
+        low_drop = (today_open - today_low) / today_open * 100     # intraday drop %
+        total_range = (today_high - today_low) / today_open * 100  # total amplitude %
+
+        # Detect spike: large intraday move
+        spike_up = high_rise >= cfg.get("spike_up_pct_min", 4.0)
+        spike_down = low_drop >= cfg.get("spike_down_pct_min", 4.0)
+        wide_range = total_range >= cfg.get("wide_range_pct_min", 7.0)
+
+        if not (spike_up or spike_down or wide_range):
+            return AlertResult()
+
+        # Need some volume confirmation
+        if turnover_amount < cfg.get("turnover_amount_min", 50000000):
+            return AlertResult()
+
+        direction = ""
+        if spike_up and not spike_down:
+            direction = "spike_up"
+        elif spike_down and not spike_up:
+            direction = "spike_down"
+        else:
+            direction = "wide_range"
+
+        score = 0.40
+        score += 0.20 * min(total_range / 10, 1)            # wider range = stronger signal
+        score += 0.15 * min(turnover_amount / 5e8, 1)       # volume confirmation
+        if direction == "spike_up" and pct_change > 0:
+            score += 0.10
+        elif direction == "spike_down" and pct_change < 0:
+            score += 0.10
+
+        reason = (f"Intraday {direction}: open={today_open:.2f}, "
+                  f"high={today_high:.2f}, low={today_low:.2f}, range={total_range:.1f}%")
+        return AlertResult(
+            matched=True,
+            alert_type="intraday_spike",
+            trigger_reason=reason,
+            confidence_score=min(score, 0.85),
+            risk_level="P1" if score >= 0.70 else "P2",
+            details={"direction": direction, "total_range": round(total_range, 2),
+                     "high_rise": round(high_rise, 2), "low_drop": round(low_drop, 2)},
+        )
+
+    # ================================================================
     # 工具
     # ================================================================
     @staticmethod

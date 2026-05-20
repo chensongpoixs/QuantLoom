@@ -8,6 +8,16 @@
     <!-- AI Daily Analysis -->
     <DailyAnalysis />
 
+    <!-- Market Breadth -->
+    <div class="breadth-north-row">
+      <div class="breadth-north-col">
+        <MarketBreadthCard :breadth="dashStore.breadth" :loading="dashStore.breadthLoading" />
+      </div>
+      <div class="breadth-north-col">
+        <NorthFlowCard :data="dashStore.northFlow" :loading="dashStore.northFlowLoading" />
+      </div>
+    </div>
+
     <!-- Stats Grid -->
     <ErrorBanner :message="dashStore.error" @retry="dashStore.fetchSummary()" />
     <div v-if="dashStore.summaryLoading && !dashStore.summary" class="stats-grid">
@@ -44,6 +54,11 @@
       <div v-else class="empty-state" style="padding:40px">
         <div class="empty-text">暂无板块数据。</div>
       </div>
+    </div>
+
+    <!-- Sector Rotation Heatmap -->
+    <div class="section">
+      <SectorRotationHeatmap />
     </div>
 
     <!-- Top Alerts -->
@@ -99,7 +114,10 @@ import SkeletonLoader from '@/components/SkeletonLoader.vue'
 import ConfidenceGauge from '@/components/ConfidenceGauge.vue'
 import FundFlowBar from '@/components/FundFlowBar.vue'
 import SectorHeatmap from '@/components/SectorHeatmap.vue'
+import SectorRotationHeatmap from '@/components/SectorRotationHeatmap.vue'
 import DailyAnalysis from '@/components/DailyAnalysis.vue'
+import MarketBreadthCard from '@/components/MarketBreadthCard.vue'
+import NorthFlowCard from '@/components/NorthFlowCard.vue'
 
 const alertsStore = useAlertsStore()
 const dashStore = useDashboardStore()
@@ -126,6 +144,8 @@ async function refresh() {
     dashStore.fetchTrend(7),
     dashStore.fetchSectors(),
     dashStore.fetchFundFlow(),
+    dashStore.fetchBreadth(),
+    dashStore.fetchNorthFlow(),
     alertsStore.fetchAlerts(),
   ])
 }
@@ -158,7 +178,22 @@ onMounted(refresh)
   background: var(--bg-hover);
 }
 
+.breadth-north-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+.breadth-north-col {
+  min-width: 0;
+}
+
 @media (max-width: 767px) {
+  .breadth-north-row {
+    grid-template-columns: 1fr;
+  }
+
   .top-alerts-table th:nth-child(3),
   .top-alerts-table td:nth-child(3),
   .top-alerts-table th:nth-child(5),

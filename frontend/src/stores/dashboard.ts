@@ -2,6 +2,8 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import api from '@/api'
 import type { SummaryStats, TrendData, SectorHeatmapItem, FundFlowItem } from '@/types'
+import type { BreadthData } from '@/components/MarketBreadthCard.vue'
+import type { NorthFlowData } from '@/components/NorthFlowCard.vue'
 
 export const useDashboardStore = defineStore('dashboard', () => {
   // -- state --
@@ -16,6 +18,12 @@ export const useDashboardStore = defineStore('dashboard', () => {
 
   const fundFlow = ref<{ inflows: FundFlowItem[]; outflows: FundFlowItem[] } | null>(null)
   const fundFlowLoading = ref(false)
+
+  const breadth = ref<BreadthData | null>(null)
+  const breadthLoading = ref(false)
+
+  const northFlow = ref<NorthFlowData | null>(null)
+  const northFlowLoading = ref(false)
 
   const error = ref<string | null>(null)
 
@@ -67,6 +75,29 @@ export const useDashboardStore = defineStore('dashboard', () => {
     }
   }
 
+  async function fetchBreadth() {
+    breadthLoading.value = true
+    try {
+      const data = (await api.get('/market/breadth', { params: { days: 1 } })) as { latest: BreadthData | null }
+      breadth.value = data?.latest ?? null
+    } catch {
+      // breadth is optional
+    } finally {
+      breadthLoading.value = false
+    }
+  }
+
+  async function fetchNorthFlow() {
+    northFlowLoading.value = true
+    try {
+      northFlow.value = (await api.get('/north-flow/latest')) as NorthFlowData
+    } catch {
+      // north flow is optional
+    } finally {
+      northFlowLoading.value = false
+    }
+  }
+
   return {
     summary,
     summaryLoading,
@@ -76,10 +107,16 @@ export const useDashboardStore = defineStore('dashboard', () => {
     sectorsLoading,
     fundFlow,
     fundFlowLoading,
+    breadth,
+    breadthLoading,
+    northFlow,
+    northFlowLoading,
     error,
     fetchSummary,
     fetchTrend,
     fetchSectors,
     fetchFundFlow,
+    fetchBreadth,
+    fetchNorthFlow,
   }
 })

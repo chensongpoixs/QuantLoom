@@ -54,3 +54,63 @@ scan_rules:
     enabled: true
     min_sector_stocks: 3                 # 板块内至少 N 只股票同步异动
     sector_pct_change_min: 1.5           # 板块平均涨幅 > 1.5%
+
+  # 6. 龙虎榜追踪型
+  lhb_tracking:
+    enabled: true
+    lhb_net_amount_min: 5000             # 龙虎榜净买额最低阈值 (万元)
+    retail_lhb_threshold: 20000          # 无机构席位时游资主导的净买额阈值 (万元)
+    frequent_board_bonus: true           # 频繁上榜 (>=3次/月) 置信度加成
+
+  # 7. 缺口回补型
+  gap_fill:
+    enabled: true
+    gap_pct_min: 1.5                      # 最低缺口幅度 (%)
+    fill_pct_min: 30                      # 最低回补比例 (%)
+    volume_ratio_min: 1.2                 # 量比要求
+    main_force_ratio_min: 5.0             # 主力参与度最低阈值
+
+  # 8. 大宗交易异动型
+  block_trade:
+    enabled: true
+    trade_amount_min: 5000                # 最低成交额 (万元)
+    premium_threshold: 3.0                # 溢价阈值 (%)
+    discount_threshold: 5.0               # 折价阈值 (%)
+
+  # 9. 高换手低涨幅型
+  high_turnover_low_return:
+    enabled: true
+    turnover_rate_min: 10.0               # 最低换手率 (%)
+    pct_change_max: 2.0                   # 最高涨跌幅 (绝对值 %)
+    turnover_amount_min: 100000000        # 最低成交额 (1亿)
+
+  # 10. 盘中急拉/急跌型
+  intraday_spike:
+    enabled: true
+    spike_up_pct_min: 4.0                 # 盘中拉升最低幅度 (%)
+    spike_down_pct_min: 4.0               # 盘中下跌最低幅度 (%)
+    wide_range_pct_min: 7.0               # 宽幅震荡最低振幅 (%)
+    turnover_amount_min: 50000000         # 最低成交额 (5000万)
+
+# --- 技术面共振评分 (Phase 5) ---
+# 在规则引擎置信度基础上，根据技术指标进行 ±0.20 的微调
+technical_resonance:
+  enabled: true
+  # MACD
+  macd_bullish_bonus: 0.05              # DIF>0 且 hist>0 加分
+  macd_bearish_penalty: -0.05           # DIF<0 且 hist<0 扣分
+  # RSI
+  rsi_oversold_bonus: 0.08              # RSI14<30 加分 (尤其底部吸筹)
+  rsi_overbought_penalty: -0.05         # RSI14>80 扣分
+  rsi_neutral_bonus: 0.03               # RSI14 30-70 加分
+  # 均线
+  ma_bullish_alignment_bonus: 0.08      # 多头排列加分
+  ma_bearish_alignment_penalty: -0.05   # 空头排列扣分
+  ma_golden_cross_bonus: 0.05           # MA5/20 金叉加分
+  price_above_ma20_bonus: 0.03          # 价格站上 MA20 加分
+  # 布林带
+  boll_squeeze_bonus: 0.03              # 带宽<0.1 变盘加分
+  # KDJ
+  kdj_oversold_bonus: 0.05              # J<0 超卖加分
+  # 限制
+  max_total_delta: 0.20                 # 最大修正幅度
