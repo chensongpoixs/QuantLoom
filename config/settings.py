@@ -46,6 +46,7 @@ from pathlib import Path
 from typing import Optional
 
 from pydantic_settings import BaseSettings
+from urllib.parse import quote_plus
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
@@ -55,9 +56,9 @@ class Settings(BaseSettings):
 
     # --- MySQL ---
     mysql_host: str = "localhost"
-    mysql_port: int = 3306
+    mysql_port: int = 20010
     mysql_user: str = "root"
-    mysql_password: str = ""
+    mysql_password: str = "chensong"
     mysql_database: str = "quant_loom"
 
     # --- Redis ---
@@ -113,6 +114,16 @@ class Settings(BaseSettings):
     @property
     def mysql_url(self) -> str:
         """SQLAlchemy MySQL 连接串"""
+        user = quote_plus(self.mysql_user)
+        pwd = quote_plus(self.mysql_password)
+        host = self.mysql_host
+        port = int(self.mysql_port)
+        db = self.mysql_database
+                        # 可加入 auth_plugin 避免 MySQL 8 认证问题
+        #return (
+        #        f"mysql+pymysql://{user}:{pwd}"
+        #        f"@{host}:{port}/{db}"
+        #        "?charset=utf8mb4")
         return (
             f"mysql+pymysql://{self.mysql_user}:{self.mysql_password}"
             f"@{self.mysql_host}:{self.mysql_port}/{self.mysql_database}"

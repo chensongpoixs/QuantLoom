@@ -11,7 +11,7 @@ if not getattr(sys, "frozen", False):
 def main() -> None:
     import uvicorn
 
-    uvicorn.run("quant_loom.api.app:app", host="0.0.0.0", port=9090)
+    uvicorn.run("quant_loom.api.app:app", host="0.0.0.0", port=20015)
 
 
 if __name__ == "__main__":

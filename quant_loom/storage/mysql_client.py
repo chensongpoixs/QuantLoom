@@ -62,6 +62,7 @@ class MySQLClient:
     @property
     def engine(self):
         if self._engine is None:
+            logger.info(f"mysql_url:{settings.mysql_url}")
             self._engine = create_engine(
                 settings.mysql_url,
                 pool_size=10,
